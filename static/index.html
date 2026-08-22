@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Sidenote</title>
+<style>
+  :root{
+    --bg:#12151A;
+    --surface:#1B2028;
+    --surface-2:#222938;
+    --border:#2E3542;
+    --text:#E9ECEF;
+    --text-dim:#8B93A1;
+    --accent:#8FB39A;
+    --accent-soft:rgba(143,179,154,0.14);
+    --accent-strong:#A8CCB6;
+    --warn:#D98E73;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  body{
+    min-height:100vh;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap{
+    max-width:520px;
+    margin:0 auto;
+    padding:28px 18px 60px;
+  }
+  header{
+    margin-bottom:22px;
+  }
+  .eyebrow{
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    margin:0 0 6px;
+  }
+  h1{
+    font-size:26px;
+    font-weight:650;
+    letter-spacing:-0.01em;
+    margin:0 0 6px;
+  }
+  .sub{
+    color:var(--text-dim);
+    font-size:14.5px;
+    line-height:1.5;
+    margin:0;
+  }
+
+  /* listening control */
+  .listen-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+    margin:22px 0;
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .ring{
+    width:52px;height:52px;
+    border-radius:50%;
+    border:2px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+    position:relative;
+    transition:border-color .3s ease;
+  }
+  .ring::after{
+    content:"";
+    width:14px;height:14px;
+    border-radius:50%;
+    background:var(--text-dim);
+    transition:background .3s ease, transform .3s ease;
+  }
+  .ring.live{
+    border-color:var(--accent);
+    animation:breathe 2.4s ease-in-out infinite;
+  }
+  .ring.live::after{
+    background:var(--accent-strong);
+  }
+  @keyframes breathe{
+    0%,100%{ box-shadow:0 0 0 0 var(--accent-soft); }
+    50%{ box-shadow:0 0 0 10px transparent; }
+  }
+  .listen-text{flex:1;}
+  .listen-title{font-size:15px;font-weight:600;margin:0 0 2px;}
+  .listen-state{font-size:13px;color:var(--text-dim);margin:0;}
+  button{
+    font-family:inherit;
+    border:none;
+    cursor:pointer;
+  }
+  .btn-toggle{
+    padding:11px 18px;
+    border-radius:999px;
+    font-size:14px;
+    font-weight:600;
+    background:var(--accent);
+    color:#0F1512;
+    transition:opacity .15s ease, transform .1s ease;
+  }
+  .btn-toggle:active{transform:scale(0.96);}
+  .btn-toggle.stop{
+    background:var(--surface-2);
+    color:var(--text);
+    border:1px solid var(--border);
+  }
+
+  .support-warning{
+    background:rgba(217,142,115,0.1);
+    border:1px solid rgba(217,142,115,0.35);
+    color:var(--warn);
+    border-radius:var(--radius);
+    padding:14px 16px;
+    font-size:13.5px;
+    line-height:1.5;
+    margin-bottom:22px;
+  }
+
+  /* match card */
+  .match-zone{
+    min-height:4px;
+  }
+  .match-card{
+    background:var(--accent-soft);
+    border:1px solid rgba(143,179,154,0.4);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:22px;
+    animation:fadein .25s ease;
+  }
+  @keyframes fadein{ from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);} }
+  .match-topic{
+    font-size:12px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--accent-strong);
+    margin:0 0 8px;
+    font-weight:700;
+  }
+  .match-body{
+    font-size:15.5px;
+    line-height:1.55;
+    white-space:pre-wrap;
+    margin:0;
+  }
+
+  /* privacy note */
+  .privacy{
+    font-size:12.5px;
+    color:var(--text-dim);
+    line-height:1.5;
+    padding:12px 14px;
+    border:1px dashed var(--border);
+    border-radius:10px;
+    margin-bottom:28px;
+  }
+
+  /* topics */
+  .section-title{
+    font-size:13px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    margin:0 0 12px;
+    font-weight:650;
+  }
+  .topic{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:10px;
+  }
+  .topic-head{
+    display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+    margin-bottom:6px;
+  }
+  .topic-title{font-size:15px;font-weight:650;margin:0;}
+  .topic-keywords{font-size:12px;color:var(--accent-strong);margin:0 0 8px;}
+  .topic-notes{font-size:14px;color:var(--text-dim);line-height:1.5;white-space:pre-wrap;margin:0;}
+  .icon-btn{
+    background:transparent;
+    color:var(--text-dim);
+    font-size:13px;
+    padding:4px 8px;
+    border-radius:6px;
+  }
+  .icon-btn:active{background:var(--surface-2);}
+
+  .add-form{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-top:14px;
+  }
+  label{
+    display:block;
+    font-size:12px;
+    color:var(--text-dim);
+    margin:12px 0 6px;
+  }
+  label:first-child{margin-top:0;}
+  input[type=text], textarea{
+    width:100%;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:9px;
+    padding:11px 12px;
+    font-size:14.5px;
+    font-family:inherit;
+    resize:vertical;
+  }
+  input:focus, textarea:focus{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+  }
+  textarea{min-height:80px;}
+  .form-actions{
+    display:flex;gap:10px;margin-top:14px;
+  }
+  .btn-primary{
+    flex:1;
+    background:var(--accent);
+    color:#0F1512;
+    padding:11px;
+    border-radius:9px;
+    font-weight:650;
+    font-size:14px;
+  }
+  .btn-secondary{
+    background:transparent;
+    color:var(--text-dim);
+    padding:11px 16px;
+    border-radius:9px;
+    font-size:14px;
+    border:1px solid var(--border);
+  }
+  .empty{
+    color:var(--text-dim);
+    font-size:13.5px;
+    padding:18px 4px;
+    text-align:center;
+  }
+  .live-caption{
+    font-size:12.5px;
+    color:var(--text-dim);
+    padding:0 2px;
+    margin:-14px 0 22px;
+    min-height:16px;
+    font-style:italic;
+  }
+
+  .lang-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:4px;
+  }
+  .lang-label{
+    font-size:12.5px;
+    color:var(--text-dim);
+    margin-right:2px;
+  }
+  .lang-pill{
+    background:var(--surface-2);
+    color:var(--text-dim);
+    border:1px solid var(--border);
+    padding:6px 13px;
+    border-radius:999px;
+    font-size:13px;
+    font-weight:600;
+  }
+  .lang-pill.active{
+    background:var(--accent-soft);
+    color:var(--accent-strong);
+    border-color:rgba(143,179,154,0.5);
+  }
+
+  .match-question{
+    font-size:12.5px;
+    color:var(--text-dim);
+    font-style:italic;
+    margin:0 0 10px;
+  }
+  .match-loading{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:var(--text-dim);
+    font-size:14px;
+  }
+  .dot-spin{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--accent-strong);
+    animation:pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:0.3;} 50%{opacity:1;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Sidenote</p>
+    <h1>Your notes, ready when you need them</h1>
+    <p class="sub">It listens for topics you've already written notes on, and quietly shows what you know. Nothing is judged, nothing is recorded.</p>
+  </header>
+
+  <div id="supportWarning"></div>
+
+  <div class="lang-row">
+    <span class="lang-label">Listening language:</span>
+    <button class="lang-pill active" id="langEn" data-lang="en-US">English</button>
+    <button class="lang-pill" id="langNl" data-lang="nl-NL">Nederlands</button>
+  </div>
+
+  <div class="listen-card">
+    <div class="ring" id="ring"></div>
+    <div class="listen-text">
+      <p class="listen-title" id="listenTitle">Not listening</p>
+      <p class="listen-state" id="listenState">Tap start when you're ready</p>
+    </div>
+    <button class="btn-toggle" id="toggleBtn">Start</button>
+  </div>
+
+  <p class="live-caption" id="liveCaption"></p>
+  <div id="debugZone"></div>
+
+  <div class="support-warning" style="background:rgba(143,179,154,0.08); border-color:rgba(143,179,154,0.3); color:var(--text-dim);">
+    Running this inside Claude's chat preview can silently block microphone access — you won't get an error, it'll just do nothing. If Start doesn't visibly change to "Listening" within a second or two, open this page directly in your phone's browser instead of the in-chat preview: tap the file card above → the share/external-link icon → open in Chrome. A real browser tab can properly ask you for microphone permission.
+  </div>
+
+  <div class="match-zone" id="matchZone"></div>
+
+  <div class="privacy">
+    Audio is sent from your phone to your laptop over your local wifi network to be transcribed there — it never goes out to the internet. Your laptop's server doesn't save the audio; it transcribes each chunk and discards it. Matching your question to a note happens entirely on your phone. Your notes themselves are saved privately to your account.
+  </div>
+
+  <p class="section-title">Your topics</p>
+  <div id="topicsList"></div>
+
+  <div id="addFormZone"></div>
+
+  <p class="section-title" style="margin-top:26px;">Add a topic</p>
+  <div class="add-form">
+    <label for="ttitle">Topic name</label>
+    <input type="text" id="ttitle" placeholder="e.g. Chess rules">
+    <label for="tkeywords">Trigger words (comma separated — words that should surface this)</label>
+    <input type="text" id="tkeywords" placeholder="e.g. chess, castling, en passant, checkmate">
+    <label for="tnotes">Your notes</label>
+    <textarea id="tnotes" placeholder="Write what you actually know / want to remember about this."></textarea>
+    <div class="form-actions">
+      <button class="btn-primary" id="saveTopicBtn">Save topic</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'sidenote:topics';
+  let topics = [];
+  let listening = false;
+  let matchTimeout = null;
+
+  const els = {
+    ring: document.getElementById('ring'),
+    listenTitle: document.getElementById('listenTitle'),
+    listenState: document.getElementById('listenState'),
+    toggleBtn: document.getElementById('toggleBtn'),
+    liveCaption: document.getElementById('liveCaption'),
+    matchZone: document.getElementById('matchZone'),
+    topicsList: document.getElementById('topicsList'),
+    supportWarning: document.getElementById('supportWarning'),
+    ttitle: document.getElementById('ttitle'),
+    tkeywords: document.getElementById('tkeywords'),
+    tnotes: document.getElementById('tnotes'),
+    saveTopicBtn: document.getElementById('saveTopicBtn'),
+    langEn: document.getElementById('langEn'),
+    langNl: document.getElementById('langNl'),
+  };
+
+  let currentLang = 'en-US';
+  let lastHandledText = '';
+
+  const seedTopics = [
+    {
+      id: 'seed-chess',
+      title: 'Chess — rules I sometimes blank on',
+      keywords: 'chess, castling, en passant, checkmate, stalemate, promotion',
+      notes: "Castling: king moves 2 squares toward a rook, rook jumps to the other side. Only if neither piece has moved, no pieces between them, and the king isn't in check or passing through check.\n\nEn passant: if an opponent's pawn moves 2 squares and lands beside your pawn, you can capture it as if it only moved 1 square — but only immediately on your next move.\n\nStalemate: if the player to move has no legal move and is NOT in check, it's a draw, not a win.\n\nPawn promotion: a pawn reaching the far row can become any piece except a king (usually a queen)."
+    }
+  ];
+
+  async function loadTopics(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        topics = JSON.parse(raw);
+      } else {
+        topics = seedTopics;
+        saveTopics();
+      }
+    }catch(e){
+      console.error('Storage error, using defaults', e);
+      topics = seedTopics;
+    }
+    renderTopics();
+  }
+
+  function saveTopics(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(topics));
+    }catch(e){
+      console.error('Storage error', e);
+    }
+  }
+
+  function renderTopics(){
+    if(!topics.length){
+      els.topicsList.innerHTML = '<div class="empty">No topics yet. Add one below.</div>';
+      return;
+    }
+    els.topicsList.innerHTML = topics.map(t => `
+      <div class="topic">
+        <div class="topic-head">
+          <p class="topic-title">${escapeHtml(t.title)}</p>
+          <button class="icon-btn" data-delete="${t.id}">Delete</button>
+        </div>
+        <p class="topic-keywords">${escapeHtml(t.keywords)}</p>
+        <p class="topic-notes">${escapeHtml(t.notes)}</p>
+      </div>
+    `).join('');
+
+    els.topicsList.querySelectorAll('[data-delete]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const id = btn.getAttribute('data-delete');
+        topics = topics.filter(t=>t.id!==id);
+        await saveTopics();
+        renderTopics();
+      });
+    });
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.innerText = str;
+    return d.innerHTML;
+  }
+
+  els.saveTopicBtn.addEventListener('click', async ()=>{
+    const title = els.ttitle.value.trim();
+    const keywords = els.tkeywords.value.trim();
+    const notes = els.tnotes.value.trim();
+    if(!title || !keywords){
+      els.ttitle.focus();
+      return;
+    }
+    topics.push({
+      id: 'topic-' + Date.now(),
+      title, keywords, notes
+    });
+    await saveTopics();
+    renderTopics();
+    els.ttitle.value='';
+    els.tkeywords.value='';
+    els.tnotes.value='';
+  });
+
+  const STOPWORDS = new Set([
+    // English function words
+    'the','a','an','is','are','was','were','what','when','where','how','why',
+    'does','do','did','happen','happens','happened','if','and','or','to','of',
+    'in','on','for','with','can','you','tell','me','about','it','its',"it's",
+    'this','that','these','those','be','been','being','will','would','could',
+    'should','not','no','yes','so','but','as','at','by','from','than','then',
+    // Dutch function words
+    'de','het','een','is','zijn','was','waren','wat','wanneer','waar','hoe',
+    'waarom','gebeurt','gebeurde','als','en','of','naar','van','in','op','voor',
+    'met','kan','kun','je','jij','u','vertel','over','dit','dat','deze','die',
+    'zal','zou','kunnen','moet','niet','geen','maar','dan'
+  ]);
+
+  function tokenize(str){
+    return str.toLowerCase()
+      .replace(/[.,!?;:"'()\-]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w && !STOPWORDS.has(w));
+  }
+
+  // Fully offline fallback: scores each sentence in the notes by how many
+  // meaningful words it shares with the question, returns the best match.
+  function extractLocalAnswer(question, notes){
+    const qWords = new Set(tokenize(question));
+    if(qWords.size === 0) return notes;
+
+    const sentences = notes.split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(Boolean);
+    if(sentences.length <= 1) return notes;
+
+    let best = null;
+    let bestScore = 0;
+    for(const s of sentences){
+      const sWords = tokenize(s);
+      let score = 0;
+      for(const w of sWords){ if(qWords.has(w)) score++; }
+      if(score > bestScore){
+        bestScore = score;
+        best = s;
+      }
+    }
+    // Require at least 2 overlapping meaningful words to trust a single-sentence
+    // answer — otherwise it's likely a broad question, so return everything.
+    return (best && bestScore >= 2) ? best : notes;
+  }
+
+  function findMatchingTopic(text){
+    const lower = text.toLowerCase();
+    for(const t of topics){
+      const words = t.keywords.split(',').map(w=>w.trim().toLowerCase()).filter(Boolean);
+      if(words.some(w => w && lower.includes(w))){
+        return t;
+      }
+    }
+    return null;
+  }
+
+  function showLoading(topic, question){
+    clearTimeout(matchTimeout);
+    els.matchZone.innerHTML = `
+      <div class="match-card">
+        <p class="match-topic">${escapeHtml(topic.title)}</p>
+        <p class="match-question">"${escapeHtml(question)}"</p>
+        <div class="match-loading"><span class="dot-spin"></span> finding the answer in your notes…</div>
+      </div>
+    `;
+  }
+
+  function showAnswer(topic, question, answer){
+    clearTimeout(matchTimeout);
+    els.matchZone.innerHTML = `
+      <div class="match-card">
+        <p class="match-topic">${escapeHtml(topic.title)}</p>
+        <p class="match-question">"${escapeHtml(question)}"</p>
+        <p class="match-body">${escapeHtml(answer)}</p>
+      </div>
+    `;
+    matchTimeout = setTimeout(()=>{
+      els.matchZone.innerHTML = '';
+    }, 30000);
+  }
+
+  async function checkForMatch(text){
+    const trimmed = text.trim();
+    if(!trimmed || trimmed === lastHandledText) return;
+
+    const topic = findMatchingTopic(trimmed);
+    if(!topic) return;
+
+    lastHandledText = trimmed;
+    showLoading(topic, trimmed);
+    // The Anthropic shortcut only works inside Claude's own preview — once
+    // self-hosted, there's no proxy for it, so we go straight to the fully
+    // offline local sentence-matcher instead.
+    showAnswer(topic, trimmed, extractLocalAnswer(trimmed, topic.notes));
+  }
+
+  function showDebug(msg){
+    document.getElementById('debugZone').innerHTML = msg
+      ? `<div class="support-warning">${escapeHtml(msg)}</div>`
+      : '';
+  }
+
+  // --- Transcription via the local server (server.py, faster-whisper) ---
+  const hasRecordingSupport = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+
+  if(!hasRecordingSupport){
+    els.supportWarning.innerHTML = `
+      <div class="support-warning">
+        This browser doesn't support microphone recording. Try Chrome, and make sure you opened this page from your laptop's address (e.g. http://192.168.x.x:8000), not as a local file.
+      </div>
+    `;
+    els.toggleBtn.disabled = true;
+    els.toggleBtn.style.opacity = '0.4';
+  }
+
+  let mediaStream = null;
+
+  function recordChunk(stream, durationMs){
+    return new Promise((resolve, reject)=>{
+      let recorder;
+      try{ recorder = new MediaRecorder(stream); }
+      catch(e){ reject(e); return; }
+      const chunks = [];
+      recorder.ondataavailable = (e)=>{ if(e.data && e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = ()=> resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+      recorder.onerror = (e)=> reject(e.error || e);
+      recorder.start();
+      setTimeout(()=>{ try{ recorder.stop(); }catch(e){ reject(e); } }, durationMs);
+    });
+  }
+
+  async function recordingLoop(){
+    const CHUNK_MS = 4000;
+    while(listening){
+      try{
+        const blob = await recordChunk(mediaStream, CHUNK_MS);
+        if(!listening) break;
+
+        els.liveCaption.textContent = 'transcribing…';
+
+        const form = new FormData();
+        form.append('file', blob, 'chunk.webm');
+        form.append('lang', currentLang);
+
+        const res = await fetch('/transcribe', { method: 'POST', body: form });
+        if(!res.ok) throw new Error('Server responded with ' + res.status);
+        const data = await res.json();
+        const text = (data.text || '').trim();
+
+        els.liveCaption.textContent = text ? ('“' + text + '”') : '';
+        if(text){ checkForMatch(text); }
+      }catch(e){
+        showDebug('Couldn\'t reach the transcription server: ' + (e && e.message ? e.message : e) + '. Make sure server.py is running on your laptop and your phone is on the same wifi network.');
+        await new Promise(r=>setTimeout(r, 1200));
+      }
+    }
+  }
+
+  async function startListening(){
+    if(!hasRecordingSupport) return;
+    showDebug('');
+
+    try{
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }catch(permErr){
+      showDebug('Microphone permission was blocked or denied (' + (permErr && permErr.name ? permErr.name : 'unknown error') + ').');
+      return;
+    }
+
+    listening = true;
+    els.ring.classList.add('live');
+    els.toggleBtn.textContent = 'Stop';
+    els.toggleBtn.classList.add('stop');
+    els.listenTitle.textContent = 'Listening';
+    els.listenState.textContent = 'Sending audio to your laptop to transcribe';
+
+    recordingLoop();
+  }
+
+  function stopListening(){
+    listening = false;
+    if(mediaStream){
+      mediaStream.getTracks().forEach(t=>t.stop());
+      mediaStream = null;
+    }
+    els.ring.classList.remove('live');
+    els.listenTitle.textContent = 'Not listening';
+    els.listenState.textContent = "Tap start when you're ready";
+    els.toggleBtn.textContent = 'Start';
+    els.toggleBtn.classList.remove('stop');
+    els.liveCaption.textContent = '';
+  }
+
+  els.toggleBtn.addEventListener('click', ()=>{
+    if(listening){ stopListening(); } else { startListening(); }
+  });
+
+  function setLang(lang){
+    currentLang = lang;
+    els.langEn.classList.toggle('active', lang === 'en-US');
+    els.langNl.classList.toggle('active', lang === 'nl-NL');
+  }
+  els.langEn.addEventListener('click', ()=> setLang('en-US'));
+  els.langNl.addEventListener('click', ()=> setLang('nl-NL'));
+
+  loadTopics();
+})();
+</script>
+</body>
+</html>
