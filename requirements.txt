@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 python-multipart
 faster-whisper
+
+# New: streaming Voxtral backend via WhisperLiveKit
+whisperlivekit[voxtral-hf]
