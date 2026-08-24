@@ -3,462 +3,450 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Sidenote</title>
+<title>Sidenote // HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#12151A;
-    --surface:#1B2028;
-    --surface-2:#222938;
-    --border:#2E3542;
-    --text:#E9ECEF;
-    --text-dim:#8B93A1;
-    --accent:#8FB39A;
-    --accent-soft:rgba(143,179,154,0.14);
-    --accent-strong:#A8CCB6;
-    --warn:#D98E73;
-    --radius:14px;
+    --void:#050a0c;
+    --void-2:#081215;
+    --panel:rgba(10,22,26,.55);
+    --panel-border:rgba(79,243,255,.22);
+    --core:#4ff3ff;
+    --core-dim:#1c6b73;
+    --core-soft:rgba(79,243,255,.12);
+    --amber:#ff9142;
+    --amber-soft:rgba(255,145,66,.14);
+    --warn:#ff5b57;
+    --warn-soft:rgba(255,91,87,.12);
+    --text:#d9f7ff;
+    --text-dim:#5c8a91;
+    --font-display:'Orbitron', sans-serif;
+    --font-ui:'Rajdhani', sans-serif;
+    --font-mono:'Share Tech Mono', monospace;
+    --radius:10px;
   }
-  *{box-sizing:border-box;}
+
+  *{ box-sizing:border-box; }
   html,body{
-    margin:0;padding:0;
-    background:var(--bg);
+    margin:0; padding:0; width:100%; min-height:100%;
+    background:var(--void);
     color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    -webkit-font-smoothing:antialiased;
+    font-family:var(--font-ui);
   }
   body{
-    min-height:100vh;
     padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
-  .wrap{
-    max-width:520px;
+
+  .backdrop{
+    position:fixed; inset:0; z-index:0;
+    background:
+      radial-gradient(ellipse at 50% 20%, rgba(79,243,255,.08), transparent 60%),
+      linear-gradient(var(--void-2) 1px, transparent 1px) 0 0 / 100% 42px,
+      linear-gradient(90deg, var(--void-2) 1px, transparent 1px) 0 0 / 42px 100%,
+      var(--void);
+    background-blend-mode: screen, normal, normal, normal;
+    opacity:.9;
+  }
+  .vignette{
+    position:fixed; inset:0; z-index:1; pointer-events:none;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.7) 100%);
+  }
+  .scanlines{
+    position:fixed; inset:0; z-index:5; pointer-events:none;
+    background: repeating-linear-gradient(
+      to bottom, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px,
+      transparent 2px, transparent 3px);
+    mix-blend-mode:overlay;
+    opacity:.5;
+  }
+
+  .app{
+    position:relative; z-index:2;
+    min-height:100vh;
+    max-width:1180px;
     margin:0 auto;
-    padding:28px 18px 60px;
-  }
-  header{
-    margin-bottom:22px;
-  }
-  .eyebrow{
-    font-size:11px;
-    letter-spacing:0.14em;
-    text-transform:uppercase;
-    color:var(--text-dim);
-    margin:0 0 6px;
-  }
-  h1{
-    font-size:26px;
-    font-weight:650;
-    letter-spacing:-0.01em;
-    margin:0 0 6px;
-  }
-  .sub{
-    color:var(--text-dim);
-    font-size:14.5px;
-    line-height:1.5;
-    margin:0;
+    display:flex; flex-direction:column;
+    padding:14px;
+    gap:12px;
   }
 
-  /* listening control */
-  .listen-card{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    padding:20px;
-    margin:22px 0;
-    display:flex;
-    align-items:center;
-    gap:16px;
-  }
-  .ring{
-    width:52px;height:52px;
-    border-radius:50%;
-    border:2px solid var(--border);
-    display:flex;align-items:center;justify-content:center;
+  /* ---------- TOP BAR ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    border:1px solid var(--panel-border);
+    background:var(--panel);
+    backdrop-filter: blur(6px);
+    padding:0 18px;
+    height:52px;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 14px 100%);
     flex-shrink:0;
-    position:relative;
-    transition:border-color .3s ease;
   }
-  .ring::after{
-    content:"";
-    width:14px;height:14px;
-    border-radius:50%;
-    background:var(--text-dim);
-    transition:background .3s ease, transform .3s ease;
-  }
-  .ring.live{
-    border-color:var(--accent);
-    animation:breathe 2.4s ease-in-out infinite;
-  }
-  .ring.live::after{
-    background:var(--accent-strong);
-  }
-  @keyframes breathe{
-    0%,100%{ box-shadow:0 0 0 0 var(--accent-soft); }
-    50%{ box-shadow:0 0 0 10px transparent; }
-  }
-  .listen-text{flex:1;}
-  .listen-title{font-size:15px;font-weight:600;margin:0 0 2px;}
-  .listen-state{font-size:13px;color:var(--text-dim);margin:0;}
-  button{
-    font-family:inherit;
-    border:none;
-    cursor:pointer;
-  }
-  .btn-toggle{
-    padding:11px 18px;
-    border-radius:999px;
-    font-size:14px;
-    font-weight:600;
-    background:var(--accent);
-    color:#0F1512;
-    transition:opacity .15s ease, transform .1s ease;
-  }
-  .btn-toggle:active{transform:scale(0.96);}
-  .btn-toggle.stop{
-    background:var(--surface-2);
-    color:var(--text);
-    border:1px solid var(--border);
-  }
-
-  .support-warning{
-    background:rgba(217,142,115,0.1);
-    border:1px solid rgba(217,142,115,0.35);
-    color:var(--warn);
-    border-radius:var(--radius);
-    padding:14px 16px;
-    font-size:13.5px;
-    line-height:1.5;
-    margin-bottom:22px;
-  }
-
-  /* match card */
-  .match-zone{
-    min-height:4px;
-  }
-  .match-card{
-    background:var(--accent-soft);
-    border:1px solid rgba(143,179,154,0.4);
-    border-radius:var(--radius);
-    padding:18px;
-    margin-bottom:22px;
-    animation:fadein .25s ease;
-  }
-  @keyframes fadein{ from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);} }
-  .match-topic{
-    font-size:12px;
-    letter-spacing:0.06em;
-    text-transform:uppercase;
-    color:var(--accent-strong);
-    margin:0 0 8px;
+  .brand{
+    font-family:var(--font-display);
     font-weight:700;
+    letter-spacing:4px;
+    font-size:14px;
+    color:var(--core);
+    text-shadow:0 0 12px rgba(79,243,255,.6);
+    white-space:nowrap;
   }
-  .match-body{
-    font-size:15.5px;
-    line-height:1.55;
-    white-space:pre-wrap;
-    margin:0;
+  .brand span{ color:var(--text-dim); font-weight:500; }
+  .topbar-right{
+    display:flex; align-items:center; gap:18px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--text-dim);
+    letter-spacing:1px;
   }
+  .status-dot{
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--core); margin-right:7px;
+    box-shadow:0 0 8px var(--core), 0 0 2px var(--core);
+    animation: blink 2.4s ease-in-out infinite;
+  }
+  .status-dot.processing{ background:var(--amber); box-shadow:0 0 8px var(--amber); animation-duration:.8s; }
+  .status-dot.error{ background:var(--warn); box-shadow:0 0 8px var(--warn); }
+  @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  #statusText{ color:var(--text); }
+  #clock{ color:var(--text); display:none; }
+  @media (min-width:560px){ #clock{ display:inline; } }
 
-  /* privacy note */
-  .privacy{
-    font-size:12.5px;
-    color:var(--text-dim);
-    line-height:1.5;
-    padding:12px 14px;
-    border:1px dashed var(--border);
-    border-radius:10px;
-    margin-bottom:28px;
-  }
-
-  /* topics */
-  .section-title{
-    font-size:13px;
-    letter-spacing:0.06em;
-    text-transform:uppercase;
-    color:var(--text-dim);
-    margin:0 0 12px;
-    font-weight:650;
-  }
-  .topic{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    padding:16px;
-    margin-bottom:10px;
-  }
-  .topic-head{
-    display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
-    margin-bottom:6px;
-  }
-  .topic-title{font-size:15px;font-weight:650;margin:0;}
-  .topic-keywords{font-size:12px;color:var(--accent-strong);margin:0 0 8px;}
-  .topic-notes{font-size:14px;color:var(--text-dim);line-height:1.5;white-space:pre-wrap;margin:0;}
-  .icon-btn{
-    background:transparent;
-    color:var(--text-dim);
-    font-size:13px;
-    padding:4px 8px;
-    border-radius:6px;
-  }
-  .icon-btn:active{background:var(--surface-2);}
-
-  .add-form{
-    background:var(--surface);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    padding:16px;
-    margin-top:14px;
-  }
-  label{
-    display:block;
-    font-size:12px;
-    color:var(--text-dim);
-    margin:12px 0 6px;
-  }
-  label:first-child{margin-top:0;}
-  input[type=text], textarea{
-    width:100%;
-    background:var(--surface-2);
-    border:1px solid var(--border);
-    color:var(--text);
-    border-radius:9px;
-    padding:11px 12px;
-    font-size:14.5px;
-    font-family:inherit;
-    resize:vertical;
-  }
-  input:focus, textarea:focus{
-    outline:2px solid var(--accent);
-    outline-offset:1px;
-  }
-  textarea{min-height:80px;}
-  .form-actions{
-    display:flex;gap:10px;margin-top:14px;
-  }
-  .btn-primary{
+  /* ---------- MAIN GRID ---------- */
+  .main{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:12px;
     flex:1;
-    background:var(--accent);
-    color:#0F1512;
-    padding:11px;
-    border-radius:9px;
-    font-weight:650;
-    font-size:14px;
+    min-height:0;
   }
-  .btn-secondary{
-    background:transparent;
-    color:var(--text-dim);
-    padding:11px 16px;
-    border-radius:9px;
-    font-size:14px;
-    border:1px solid var(--border);
-  }
-  .empty{
-    color:var(--text-dim);
-    font-size:13.5px;
-    padding:18px 4px;
-    text-align:center;
-  }
-  .live-caption{
-    font-size:12.5px;
-    color:var(--text-dim);
-    padding:0 2px;
-    margin:-14px 0 22px;
-    min-height:16px;
-    font-style:italic;
+  @media (min-width:920px){
+    .main{ grid-template-columns: 300px 1fr 320px; align-items:start; }
   }
 
+  .panel{
+    position:relative;
+    border:1px solid var(--panel-border);
+    background:var(--panel);
+    backdrop-filter: blur(6px);
+    padding:16px 16px 18px;
+    display:flex; flex-direction:column;
+    min-height:0;
+  }
+  .panel::before{
+    content:"";
+    position:absolute; top:0; left:0; width:22px; height:22px;
+    border-top:2px solid var(--core); border-left:2px solid var(--core);
+    opacity:.7;
+  }
+  .panel::after{
+    content:"";
+    position:absolute; bottom:0; right:0; width:22px; height:22px;
+    border-bottom:2px solid var(--core); border-right:2px solid var(--core);
+    opacity:.7;
+  }
+  .panel-title{
+    font-family:var(--font-ui); font-weight:700; letter-spacing:3px;
+    font-size:12px; color:var(--core); text-transform:uppercase;
+    margin:0 0 14px; padding-bottom:10px;
+    border-bottom:1px solid var(--panel-border);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .panel-title small{
+    font-family:var(--font-mono); color:var(--text-dim); font-weight:400; letter-spacing:0;
+    font-size:11px;
+  }
+
+  /* ---------- LEFT: CONTROLS ---------- */
   .lang-row{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    flex-wrap:wrap;
-    margin-bottom:4px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:16px;
   }
   .lang-label{
-    font-size:12.5px;
-    color:var(--text-dim);
-    margin-right:2px;
+    font-family:var(--font-mono); font-size:11px; letter-spacing:.05em;
+    text-transform:uppercase; color:var(--text-dim); width:100%; margin-bottom:6px;
   }
   .lang-pill{
-    background:var(--surface-2);
-    color:var(--text-dim);
-    border:1px solid var(--border);
-    padding:6px 13px;
-    border-radius:999px;
-    font-size:13px;
-    font-weight:600;
+    background:transparent; color:var(--text-dim); border:1px solid var(--panel-border);
+    padding:7px 14px; border-radius:999px; font-size:13px; font-weight:600;
+    font-family:var(--font-ui); cursor:pointer;
   }
-  .lang-pill.active{
-    background:var(--accent-soft);
-    color:var(--accent-strong);
-    border-color:rgba(143,179,154,0.5);
+  .lang-pill.active{ background:var(--core-soft); color:var(--core); border-color:rgba(79,243,255,.5); }
+
+  .btn-toggle{
+    width:100%;
+    padding:13px 18px;
+    border-radius:6px;
+    font-size:14px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+    font-family:var(--font-ui);
+    background:var(--core); color:#03181C; border:none; cursor:pointer;
+    transition:opacity .15s ease, transform .1s ease;
+    margin-bottom:18px;
+  }
+  .btn-toggle:active{ transform:scale(0.98); }
+  .btn-toggle.stop{ background:transparent; color:var(--warn); border:1px solid var(--warn); }
+  .btn-toggle:disabled{ opacity:.4; cursor:not-allowed; }
+
+  .divider{ height:1px; background:var(--panel-border); margin:4px 0 16px; }
+
+  .keyval{ display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:12px; padding:6px 0; color:var(--text-dim); border-bottom:1px dashed rgba(79,243,255,.12); }
+  .keyval span:last-child{ color:var(--text); }
+  .keyval:last-child{ border-bottom:none; }
+
+  .support-warning{
+    background:var(--amber-soft);
+    border:1px solid rgba(255,145,66,.35);
+    color:var(--amber);
+    border-radius:var(--radius);
+    padding:12px 14px;
+    font-size:13px; line-height:1.5;
+    margin-bottom:16px;
+    font-family:var(--font-ui);
+  }
+  .mic-warning{
+    background:var(--warn-soft);
+    border:1px solid rgba(255,91,87,.4);
+    color:var(--warn);
+    border-radius:var(--radius);
+    padding:12px 14px;
+    font-size:13px; line-height:1.5;
+    margin-bottom:16px;
   }
 
-  .match-question{
-    font-size:12.5px;
-    color:var(--text-dim);
-    font-style:italic;
-    margin:0 0 10px;
+  /* ---------- CENTER: ORB ---------- */
+  .orb-panel{ align-items:center; justify-content:center; position:relative; min-height:340px; }
+  .orb-corner{ position:absolute; font-family:var(--font-mono); font-size:11px; color:var(--text-dim); letter-spacing:1px; }
+  .oc-tl{ top:16px; left:20px; } .oc-tr{ top:16px; right:20px; text-align:right; }
+  .oc-bl{ bottom:16px; left:20px; } .oc-br{ bottom:16px; right:20px; text-align:right; }
+  .orb-corner b{ color:var(--core); display:block; font-size:15px; font-family:var(--font-mono); }
+
+  .orb-stage{ position:relative; width:min(280px, 78vw); aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; }
+
+  .orb-ring{ position:absolute; border-radius:50%; border-style:solid; border-color:transparent; }
+  .ring-1{ width:56%; height:56%; border-top-color:var(--core); border-bottom-color:var(--core); border-width:1.5px; opacity:.5; }
+  .ring-2{ width:74%; height:74%; border-left-color:var(--core); border-right-color:rgba(79,243,255,.3); border-width:1px; opacity:.35; }
+  .ring-3{ width:92%; height:92%; border-width:1px; border-top-color:rgba(79,243,255,.5); opacity:.25; }
+  .ring-dashed{ width:100%; height:100%; border:1px dashed rgba(79,243,255,.2); animation: spin 40s linear infinite; }
+  @keyframes spin{ from{ transform:rotate(0); } to{ transform:rotate(360deg); } }
+
+  .orb-wrap.state-listening .ring-1{ animation: spin 7s linear infinite; opacity:.85; border-color:var(--core); }
+  .orb-wrap.state-listening .ring-2{ animation: spin 11s linear infinite reverse; opacity:.6; }
+  .orb-wrap.state-listening .ring-3{ animation: spin 17s linear infinite; opacity:.45; }
+  .orb-wrap.state-processing .ring-1{ animation: spin 2.4s linear infinite; border-color:var(--amber); opacity:.9; }
+  .orb-wrap.state-processing .ring-2{ animation: spin 3.6s linear infinite reverse; border-color:var(--amber); opacity:.6; }
+
+  .orb-core{
+    --level:0;
+    position:absolute;
+    width:calc(30% + var(--level) * 12%); height:calc(30% + var(--level) * 12%);
+    border-radius:50%;
+    background: radial-gradient(circle at 35% 30%, #eafffe, var(--core) 40%, var(--core-dim) 75%, transparent 100%);
+    box-shadow:
+      0 0 calc(30px + var(--level) * 30px) calc(8px + var(--level) * 12px) rgba(79,243,255,.5),
+      0 0 90px 30px rgba(79,243,255,.15);
+    transition:width .08s linear, height .08s linear, box-shadow .08s linear, background .3s ease;
+    animation: corepulse 3.4s ease-in-out infinite;
   }
-  .match-loading{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    color:var(--text-dim);
-    font-size:14px;
+  @keyframes corepulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.15); } }
+  .orb-wrap.state-processing .orb-core{
+    background: radial-gradient(circle at 35% 30%, #fff, #ffd9a8 35%, var(--amber) 65%, transparent 100%);
+    box-shadow:0 0 26px 8px rgba(255,145,66,.5);
+    animation: think-pulse .9s ease-in-out infinite;
   }
-  .dot-spin{
-    width:8px;height:8px;border-radius:50%;
-    background:var(--accent-strong);
-    animation:pulse 1s ease-in-out infinite;
+  @keyframes think-pulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.1); } }
+
+  .orb-readout{ position:absolute; bottom:-8px; left:50%; transform:translateX(-50%); text-align:center; width:100%; }
+  .orb-status{
+    font-family:var(--font-display); font-weight:700; letter-spacing:4px;
+    font-size:13px; color:var(--core); text-shadow:0 0 10px rgba(79,243,255,.7);
   }
+  .orb-wrap.state-processing .orb-status{ color:var(--amber); text-shadow:0 0 10px rgba(255,145,66,.7); }
+  .orb-sub{ font-family:var(--font-mono); font-size:11px; color:var(--text-dim); margin-top:6px; letter-spacing:.5px; min-height:14px; }
+
+  /* ---------- MATCH / ANSWER CARD ---------- */
+  .match-zone{ width:100%; margin-top:18px; }
+  .match-card{
+    position:relative;
+    background:var(--core-soft);
+    border:1px solid rgba(79,243,255,.35);
+    padding:16px;
+    animation:fadein .25s ease;
+  }
+  .match-card::before{ content:""; position:absolute; top:0; left:0; width:16px; height:16px; border-top:2px solid var(--core); border-left:2px solid var(--core); }
+  .match-card::after{ content:""; position:absolute; bottom:0; right:0; width:16px; height:16px; border-bottom:2px solid var(--core); border-right:2px solid var(--core); }
+  .match-card.error{ background:var(--warn-soft); border-color:rgba(255,91,87,.4); }
+  .match-card.error::before, .match-card.error::after{ border-color:var(--warn); }
+  @keyframes fadein{ from{opacity:0; transform:translateY(-4px);} to{opacity:1; transform:translateY(0);} }
+  .match-heading{
+    font-family:var(--font-mono); font-size:12.5px; font-style:italic;
+    color:var(--core); margin:0 0 10px; line-height:1.4;
+  }
+  .match-card.error .match-heading{ color:var(--warn); }
+  .match-body{ font-size:15px; line-height:1.55; white-space:pre-wrap; margin:0; color:var(--text); }
+  .match-error{ font-size:13.5px; line-height:1.5; color:var(--text); margin:0; }
+  .match-loading{ display:flex; align-items:center; gap:8px; color:var(--text-dim); font-size:13px; font-family:var(--font-mono); }
+  .dot-spin{ width:7px; height:7px; border-radius:50%; background:var(--core); animation:pulse 1s ease-in-out infinite; }
   @keyframes pulse{ 0%,100%{opacity:0.3;} 50%{opacity:1;} }
+
+  /* ---------- RIGHT: CONSOLE ---------- */
+  .console-log{ flex:1; overflow:hidden; font-family:var(--font-mono); font-size:12px; display:flex; flex-direction:column; gap:8px; max-height:220px; }
+  @media (min-width:920px){ .console-log{ max-height:none; } }
+  .log-line{ color:var(--text-dim); display:flex; gap:8px; opacity:0; animation: fadein .4s ease forwards; }
+  .log-line .t{ color:var(--core-dim); flex-shrink:0; }
+  .log-line.alert{ color:#ffbf8a; }
+  .log-line.alert .t{ color:var(--amber); }
+  .log-line.err{ color:#ffb3af; }
+  .log-line.err .t{ color:var(--warn); }
+
+  .caption-line{
+    font-family:var(--font-mono); font-size:12px; color:var(--text-dim);
+    font-style:italic; padding-top:10px; margin-top:10px; border-top:1px dashed var(--panel-border);
+    min-height:16px;
+  }
+
+  /* ---------- BOTTOM: WAVEFORM STRIP ---------- */
+  .bottombar{
+    border:1px solid var(--panel-border);
+    background:var(--panel);
+    backdrop-filter: blur(6px);
+    display:flex; align-items:center; gap:18px;
+    padding:0 18px;
+    height:56px;
+    flex-shrink:0;
+  }
+  .wave{ flex:1; height:36px; display:flex; align-items:center; gap:3px; overflow:hidden; }
+  .wave i{
+    display:block; width:3px; min-height:2px; background:var(--core); border-radius:2px;
+    box-shadow:0 0 5px rgba(79,243,255,.5);
+    transform-origin:center;
+    transition:transform .07s linear, background .2s ease;
+  }
+  .bottombar-label{
+    font-family:var(--font-ui); font-size:11px; letter-spacing:3px; color:var(--text-dim);
+    text-transform:uppercase; flex-shrink:0;
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <p class="eyebrow">Sidenote</p>
-    <h1>Your notes, ready when you need them</h1>
-    <p class="sub">It listens for topics you've already written notes on, and quietly shows what you know. Nothing is judged, nothing is recorded.</p>
-  </header>
+<div class="backdrop"></div>
+<div class="vignette"></div>
+<div class="scanlines"></div>
 
-  <div id="supportWarning"></div>
+<div class="app">
 
-  <div class="lang-row">
-    <span class="lang-label">Listening language:</span>
-    <button class="lang-pill active" id="langEn" data-lang="en-US">English</button>
-    <button class="lang-pill" id="langNl" data-lang="nl-NL">Nederlands</button>
-  </div>
-
-  <div class="listen-card">
-    <div class="ring" id="ring"></div>
-    <div class="listen-text">
-      <p class="listen-title" id="listenTitle">Not listening</p>
-      <p class="listen-state" id="listenState">Tap start when you're ready</p>
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">SIDENOTE<span>/HUD</span></div>
+    <div class="topbar-right">
+      <div><span class="status-dot" id="statusDot"></span><span id="statusText">IDLE</span></div>
+      <div id="clock">00:00:00</div>
     </div>
-    <button class="btn-toggle" id="toggleBtn">Start</button>
   </div>
 
-  <p class="live-caption" id="liveCaption"></p>
-  <div id="debugZone"></div>
+  <!-- MAIN -->
+  <div class="main">
 
-  <div class="support-warning" style="background:rgba(143,179,154,0.08); border-color:rgba(143,179,154,0.3); color:var(--text-dim);">
-    Running this inside Claude's chat preview can silently block microphone access — you won't get an error, it'll just do nothing. If Start doesn't visibly change to "Listening" within a second or two, open this page directly in your phone's browser instead of the in-chat preview: tap the file card above → the share/external-link icon → open in Chrome. A real browser tab can properly ask you for microphone permission.
-  </div>
+    <!-- LEFT: CONTROLS -->
+    <div class="panel">
+      <h3 class="panel-title">Controls</h3>
 
-  <div class="match-zone" id="matchZone"></div>
+      <div id="supportWarning"></div>
+      <div id="micWarning"></div>
 
-  <div class="privacy">
-    Audio is sent from your phone to your laptop over your local wifi network to be transcribed there — it never goes out to the internet. Your laptop's server doesn't save the audio; it transcribes each chunk and discards it. Matching your question to a note happens entirely on your phone. Your notes themselves are saved privately to your account.
-  </div>
+      <div class="lang-row">
+        <span class="lang-label">Listening language</span>
+        <button class="lang-pill active" id="langEn" data-lang="en-US">English</button>
+        <button class="lang-pill" id="langNl" data-lang="nl-NL">Nederlands</button>
+      </div>
 
-  <p class="section-title">Your topics</p>
-  <div id="topicsList"></div>
+      <button class="btn-toggle" id="toggleBtn">Start</button>
 
-  <div id="addFormZone"></div>
+      <div class="divider"></div>
 
-  <p class="section-title" style="margin-top:26px;">Add a topic</p>
-  <div class="add-form">
-    <label for="ttitle">Topic name</label>
-    <input type="text" id="ttitle" placeholder="e.g. Chess rules">
-    <label for="tkeywords">Trigger words (comma separated — words that should surface this)</label>
-    <input type="text" id="tkeywords" placeholder="e.g. chess, castling, en passant, checkmate">
-    <label for="tnotes">Your notes</label>
-    <textarea id="tnotes" placeholder="Write what you actually know / want to remember about this."></textarea>
-    <div class="form-actions">
-      <button class="btn-primary" id="saveTopicBtn">Save topic</button>
+      <div class="keyval"><span>SESSION</span><span id="uptime">00:00:00</span></div>
+      <div class="keyval"><span>CHUNKS</span><span id="chunkCount">0</span></div>
+      <div class="keyval"><span>QUERIES</span><span id="queryCount">0</span></div>
+      <div class="keyval"><span>LAST ANSWER</span><span id="lastLatency">--</span></div>
     </div>
+
+    <!-- CENTER: ORB -->
+    <div class="panel orb-panel">
+      <div class="orb-corner oc-tl">STATE<br><b id="ocState">IDLE</b></div>
+      <div class="orb-corner oc-tr">LANG<br><b id="ocLang">EN</b></div>
+      <div class="orb-corner oc-bl">SOURCE<br><b>/answer</b></div>
+      <div class="orb-corner oc-br">MODEL<br><b>whisper·base</b></div>
+
+      <div class="orb-wrap state-idle" id="orbWrap">
+        <div class="orb-stage">
+          <div class="orb-ring ring-dashed"></div>
+          <div class="orb-ring ring-3"></div>
+          <div class="orb-ring ring-2"></div>
+          <div class="orb-ring ring-1"></div>
+          <div class="orb-core" id="orbCore"></div>
+          <div class="orb-readout">
+            <div class="orb-status" id="orbStatus">IDLE</div>
+            <div class="orb-sub" id="orbSub">tap start when you're ready</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="match-zone" id="matchZone"></div>
+      <div class="caption-line" id="liveCaption"></div>
+    </div>
+
+    <!-- RIGHT: CONSOLE -->
+    <div class="panel">
+      <h3 class="panel-title">Console <small id="logCount">0 EVENTS</small></h3>
+      <div class="console-log" id="log"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottombar">
+    <div class="bottombar-label">Signal</div>
+    <div class="wave" id="wave"></div>
   </div>
 
 </div>
 
 <script>
 (function(){
-  const STORAGE_KEY = 'sidenote:topics';
-  let topics = [];
+  // ---------------- state ----------------
   let listening = false;
   let matchTimeout = null;
+  let currentLang = 'en-US';
+  let lastHandledText = '';
+  let chunkCount = 0;
+  let queryCount = 0;
+  let sessionStart = Date.now();
+  let mediaStream = null;
 
   const els = {
-    ring: document.getElementById('ring'),
-    listenTitle: document.getElementById('listenTitle'),
-    listenState: document.getElementById('listenState'),
+    orbWrap: document.getElementById('orbWrap'),
+    orbCore: document.getElementById('orbCore'),
+    orbStatus: document.getElementById('orbStatus'),
+    orbSub: document.getElementById('orbSub'),
     toggleBtn: document.getElementById('toggleBtn'),
     liveCaption: document.getElementById('liveCaption'),
     matchZone: document.getElementById('matchZone'),
-    topicsList: document.getElementById('topicsList'),
     supportWarning: document.getElementById('supportWarning'),
-    ttitle: document.getElementById('ttitle'),
-    tkeywords: document.getElementById('tkeywords'),
-    tnotes: document.getElementById('tnotes'),
-    saveTopicBtn: document.getElementById('saveTopicBtn'),
+    micWarning: document.getElementById('micWarning'),
     langEn: document.getElementById('langEn'),
     langNl: document.getElementById('langNl'),
+    statusDot: document.getElementById('statusDot'),
+    statusText: document.getElementById('statusText'),
+    ocState: document.getElementById('ocState'),
+    ocLang: document.getElementById('ocLang'),
+    uptime: document.getElementById('uptime'),
+    chunkCount: document.getElementById('chunkCount'),
+    queryCount: document.getElementById('queryCount'),
+    lastLatency: document.getElementById('lastLatency'),
+    log: document.getElementById('log'),
+    logCount: document.getElementById('logCount'),
+    clock: document.getElementById('clock'),
+    wave: document.getElementById('wave'),
   };
-
-  let currentLang = 'en-US';
-  let lastHandledText = '';
-
-  const seedTopics = [
-    {
-      id: 'seed-chess',
-      title: 'Chess — rules I sometimes blank on',
-      keywords: 'chess, castling, en passant, checkmate, stalemate, promotion',
-      notes: "Castling: king moves 2 squares toward a rook, rook jumps to the other side. Only if neither piece has moved, no pieces between them, and the king isn't in check or passing through check.\n\nEn passant: if an opponent's pawn moves 2 squares and lands beside your pawn, you can capture it as if it only moved 1 square — but only immediately on your next move.\n\nStalemate: if the player to move has no legal move and is NOT in check, it's a draw, not a win.\n\nPawn promotion: a pawn reaching the far row can become any piece except a king (usually a queen)."
-    }
-  ];
-
-  async function loadTopics(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(raw){
-        topics = JSON.parse(raw);
-      } else {
-        topics = seedTopics;
-        saveTopics();
-      }
-    }catch(e){
-      console.error('Storage error, using defaults', e);
-      topics = seedTopics;
-    }
-    renderTopics();
-  }
-
-  function saveTopics(){
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(topics));
-    }catch(e){
-      console.error('Storage error', e);
-    }
-  }
-
-  function renderTopics(){
-    if(!topics.length){
-      els.topicsList.innerHTML = '<div class="empty">No topics yet. Add one below.</div>';
-      return;
-    }
-    els.topicsList.innerHTML = topics.map(t => `
-      <div class="topic">
-        <div class="topic-head">
-          <p class="topic-title">${escapeHtml(t.title)}</p>
-          <button class="icon-btn" data-delete="${t.id}">Delete</button>
-        </div>
-        <p class="topic-keywords">${escapeHtml(t.keywords)}</p>
-        <p class="topic-notes">${escapeHtml(t.notes)}</p>
-      </div>
-    `).join('');
-
-    els.topicsList.querySelectorAll('[data-delete]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const id = btn.getAttribute('data-delete');
-        topics = topics.filter(t=>t.id!==id);
-        await saveTopics();
-        renderTopics();
-      });
-    });
-  }
 
   function escapeHtml(str){
     const d = document.createElement('div');
@@ -466,142 +454,226 @@
     return d.innerHTML;
   }
 
-  els.saveTopicBtn.addEventListener('click', async ()=>{
-    const title = els.ttitle.value.trim();
-    const keywords = els.tkeywords.value.trim();
-    const notes = els.tnotes.value.trim();
-    if(!title || !keywords){
-      els.ttitle.focus();
-      return;
-    }
-    topics.push({
-      id: 'topic-' + Date.now(),
-      title, keywords, notes
+  // ---------------- clock / uptime (real) ----------------
+  function tickClock(){
+    els.clock.textContent = new Date().toTimeString().slice(0,8);
+    const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+    const h = String(Math.floor(elapsed/3600)).padStart(2,'0');
+    const m = String(Math.floor((elapsed%3600)/60)).padStart(2,'0');
+    const s = String(elapsed%60).padStart(2,'0');
+    els.uptime.textContent = `${h}:${m}:${s}`;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // ---------------- waveform bars (real audio, idle fallback) ----------------
+  const BAR_COUNT = 40;
+  const bars = [];
+  for(let i=0;i<BAR_COUNT;i++){
+    const bar = document.createElement('i');
+    bar.style.height = '30px';
+    bar.style.transform = 'scaleY(0.08)';
+    els.wave.appendChild(bar);
+    bars.push(bar);
+  }
+  let idlePhase = 0;
+  function idleWave(){
+    if(listening) return; // real audio drives it instead
+    idlePhase += 0.12;
+    bars.forEach((bar, i)=>{
+      const v = 0.06 + 0.05 * Math.abs(Math.sin(idlePhase + i*0.35));
+      bar.style.transform = `scaleY(${v.toFixed(3)})`;
     });
-    await saveTopics();
-    renderTopics();
-    els.ttitle.value='';
-    els.tkeywords.value='';
-    els.tnotes.value='';
-  });
-
-  const STOPWORDS = new Set([
-    // English function words
-    'the','a','an','is','are','was','were','what','when','where','how','why',
-    'does','do','did','happen','happens','happened','if','and','or','to','of',
-    'in','on','for','with','can','you','tell','me','about','it','its',"it's",
-    'this','that','these','those','be','been','being','will','would','could',
-    'should','not','no','yes','so','but','as','at','by','from','than','then',
-    // Dutch function words
-    'de','het','een','is','zijn','was','waren','wat','wanneer','waar','hoe',
-    'waarom','gebeurt','gebeurde','als','en','of','naar','van','in','op','voor',
-    'met','kan','kun','je','jij','u','vertel','over','dit','dat','deze','die',
-    'zal','zou','kunnen','moet','niet','geen','maar','dan'
-  ]);
-
-  function tokenize(str){
-    return str.toLowerCase()
-      .replace(/[.,!?;:"'()\-]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w && !STOPWORDS.has(w));
+    requestAnimationFrame(idleWave);
   }
+  requestAnimationFrame(idleWave);
 
-  // Fully offline fallback: scores each sentence in the notes by how many
-  // meaningful words it shares with the question, returns the best match.
-  function extractLocalAnswer(question, notes){
-    const qWords = new Set(tokenize(question));
-    if(qWords.size === 0) return notes;
+  // ---------------- console log (real events only) ----------------
+  let logCount = 0;
+  function addLog(msg, level){
+    const line = document.createElement('div');
+    line.className = 'log-line' + (level === 'alert' ? ' alert' : level === 'err' ? ' err' : '');
+    const time = new Date().toTimeString().slice(0,8);
+    line.innerHTML = `<span class="t">[${time}]</span><span>${escapeHtml(msg)}</span>`;
+    els.log.appendChild(line);
+    logCount++;
+    els.logCount.textContent = logCount + ' EVENTS';
+    while(els.log.children.length > 30){ els.log.removeChild(els.log.firstChild); }
+    els.log.scrollTop = els.log.scrollHeight;
+  }
+  addLog('sidenote hud initialized');
 
-    const sentences = notes.split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(Boolean);
-    if(sentences.length <= 1) return notes;
+  // ---------------- state / status UI ----------------
+  function setState(state, subtext){
+    els.orbWrap.classList.remove('state-idle', 'state-listening', 'state-processing');
+    els.orbWrap.classList.add('state-' + state);
+    els.orbStatus.textContent = state.toUpperCase();
+    els.ocState.textContent = state.toUpperCase();
+    if(subtext !== undefined) els.orbSub.textContent = subtext;
 
-    let best = null;
-    let bestScore = 0;
-    for(const s of sentences){
-      const sWords = tokenize(s);
-      let score = 0;
-      for(const w of sWords){ if(qWords.has(w)) score++; }
-      if(score > bestScore){
-        bestScore = score;
-        best = s;
-      }
+    els.statusDot.classList.remove('processing', 'error');
+    if(state === 'processing'){
+      els.statusDot.classList.add('processing');
+      els.statusText.textContent = 'PROCESSING';
+    } else if(state === 'listening'){
+      els.statusText.textContent = 'LISTENING';
+    } else {
+      els.statusText.textContent = 'IDLE';
     }
-    // Require at least 2 overlapping meaningful words to trust a single-sentence
-    // answer — otherwise it's likely a broad question, so return everything.
-    return (best && bestScore >= 2) ? best : notes;
+  }
+  setState('idle', "tap start when you're ready");
+
+  function flashError(){
+    els.statusDot.classList.add('error');
+    setTimeout(()=> els.statusDot.classList.remove('error'), 1600);
   }
 
-  function findMatchingTopic(text){
-    const lower = text.toLowerCase();
-    for(const t of topics){
-      const words = t.keywords.split(',').map(w=>w.trim().toLowerCase()).filter(Boolean);
-      if(words.some(w => w && lower.includes(w))){
-        return t;
-      }
-    }
-    return null;
-  }
-
-  function showLoading(topic, question){
+  // ---------------- match / answer card ----------------
+  function showLoading(question){
     clearTimeout(matchTimeout);
     els.matchZone.innerHTML = `
       <div class="match-card">
-        <p class="match-topic">${escapeHtml(topic.title)}</p>
-        <p class="match-question">"${escapeHtml(question)}"</p>
-        <div class="match-loading"><span class="dot-spin"></span> finding the answer in your notes…</div>
+        <p class="match-heading">"${escapeHtml(question)}"</p>
+        <div class="match-loading"><span class="dot-spin"></span> finding the answer…</div>
       </div>
     `;
   }
 
-  function showAnswer(topic, question, answer){
+  function showAnswer(question, answer){
     clearTimeout(matchTimeout);
+    setState(listening ? 'listening' : 'idle', listening ? 'listening for the next question' : "tap start when you're ready");
     els.matchZone.innerHTML = `
       <div class="match-card">
-        <p class="match-topic">${escapeHtml(topic.title)}</p>
-        <p class="match-question">"${escapeHtml(question)}"</p>
+        <p class="match-heading">"${escapeHtml(question)}"</p>
         <p class="match-body">${escapeHtml(answer)}</p>
       </div>
     `;
-    matchTimeout = setTimeout(()=>{
-      els.matchZone.innerHTML = '';
-    }, 30000);
+    matchTimeout = setTimeout(()=>{ els.matchZone.innerHTML = ''; }, 30000);
   }
 
+  function showError(question, message){
+    clearTimeout(matchTimeout);
+    setState(listening ? 'listening' : 'idle', listening ? 'listening for the next question' : "tap start when you're ready");
+    els.matchZone.innerHTML = `
+      <div class="match-card error">
+        <p class="match-heading">"${escapeHtml(question)}"</p>
+        <p class="match-error">Couldn't get an answer: ${escapeHtml(message)}</p>
+      </div>
+    `;
+    matchTimeout = setTimeout(()=>{ els.matchZone.innerHTML = ''; }, 30000);
+    flashError();
+  }
+
+  // Every non-empty transcribed line goes straight to /answer -- no keyword
+  // gate. The server retrieves relevant chunks from the indexed PDF via
+  // FAISS and asks Groq for a concise answer.
   async function checkForMatch(text){
     const trimmed = text.trim();
     if(!trimmed || trimmed === lastHandledText) return;
 
-    const topic = findMatchingTopic(trimmed);
-    if(!topic) return;
-
     lastHandledText = trimmed;
-    showLoading(topic, trimmed);
-    // The Anthropic shortcut only works inside Claude's own preview — once
-    // self-hosted, there's no proxy for it, so we go straight to the fully
-    // offline local sentence-matcher instead.
-    showAnswer(topic, trimmed, extractLocalAnswer(trimmed, topic.notes));
+    showLoading(trimmed);
+    addLog(`query → "${trimmed}"`);
+    queryCount++;
+    els.queryCount.textContent = queryCount;
+    const t0 = performance.now();
+
+    try{
+      const res = await fetch('/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: trimmed })
+      });
+      if(!res.ok){
+        let detail = '';
+        try{
+          const errBody = await res.json();
+          detail = errBody.detail || '';
+        }catch(parseErr){ /* body wasn't JSON, ignore */ }
+        throw new Error(detail || ('server responded with ' + res.status));
+      }
+      const data = await res.json();
+      const ms = Math.round(performance.now() - t0);
+      els.lastLatency.textContent = ms + 'ms';
+      addLog(`answer received (${ms}ms)`);
+      showAnswer(trimmed, data.answer);
+    }catch(e){
+      const msg = e && e.message ? e.message : String(e);
+      addLog(`/answer failed: ${msg}`, 'err');
+      showError(trimmed, msg);
+    }
   }
 
-  function showDebug(msg){
-    document.getElementById('debugZone').innerHTML = msg
-      ? `<div class="support-warning">${escapeHtml(msg)}</div>`
+  function showSupportWarning(){
+    els.supportWarning.innerHTML = `
+      <div class="support-warning">
+        This browser doesn't support microphone recording. Try Chrome, and make sure you opened this page from your laptop's address, not as a local file.
+      </div>
+    `;
+  }
+  function showMicWarning(msg){
+    els.micWarning.innerHTML = msg
+      ? `<div class="mic-warning">${escapeHtml(msg)}</div>`
       : '';
   }
 
-  // --- Transcription via the local server (server.py, faster-whisper) ---
+  // ---------------- mic level meter + real waveform (Web Audio) ----------------
+  let audioCtx = null;
+  let analyser = null;
+  let sourceNode = null;
+  let levelRAF = null;
+
+  function startLevelMeter(stream){
+    try{
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 128;
+      sourceNode = audioCtx.createMediaStreamSource(stream);
+      sourceNode.connect(analyser);
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      const step = Math.max(1, Math.floor(freqData.length / BAR_COUNT));
+
+      const tick = ()=>{
+        analyser.getByteFrequencyData(freqData);
+
+        let sum = 0;
+        for(let i=0;i<freqData.length;i++) sum += freqData[i];
+        const avg = sum / freqData.length;
+        const level = Math.min(1, avg / 90);
+        els.orbCore.style.setProperty('--level', level.toFixed(3));
+
+        for(let b=0; b<BAR_COUNT; b++){
+          const v = Math.min(1, (freqData[b*step] || 0) / 200);
+          bars[b].style.transform = `scaleY(${Math.max(0.06, v).toFixed(3)})`;
+        }
+
+        levelRAF = requestAnimationFrame(tick);
+      };
+      tick();
+    }catch(e){
+      console.warn('Level meter unavailable:', e);
+    }
+  }
+
+  function stopLevelMeter(){
+    if(levelRAF) cancelAnimationFrame(levelRAF);
+    levelRAF = null;
+    if(sourceNode){ try{ sourceNode.disconnect(); }catch(e){} }
+    if(audioCtx){ audioCtx.close().catch(()=>{}); }
+    audioCtx = null;
+    analyser = null;
+    sourceNode = null;
+    els.orbCore.style.setProperty('--level', 0);
+    requestAnimationFrame(idleWave);
+  }
+
+  // ---------------- transcription loop (server.py, faster-whisper) ----------------
   const hasRecordingSupport = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 
   if(!hasRecordingSupport){
-    els.supportWarning.innerHTML = `
-      <div class="support-warning">
-        This browser doesn't support microphone recording. Try Chrome, and make sure you opened this page from your laptop's address (e.g. http://192.168.x.x:8000), not as a local file.
-      </div>
-    `;
+    showSupportWarning();
     els.toggleBtn.disabled = true;
-    els.toggleBtn.style.opacity = '0.4';
   }
-
-  let mediaStream = null;
 
   function recordChunk(stream, durationMs){
     return new Promise((resolve, reject)=>{
@@ -617,13 +689,48 @@
     });
   }
 
+  const CHUNK_MS = 8000;
+  let recordQueue = [];   // audio blobs waiting to be transcribed
+  let draining = false;   // whether processQueue() is currently draining the queue
+
+  function updateQueueReadout(){
+    if(!listening) return;
+    els.orbSub.textContent = recordQueue.length > 0
+      ? `listening · ${recordQueue.length} chunk${recordQueue.length > 1 ? 's' : ''} queued`
+      : 'listening for the next question';
+  }
+
+  // Recording never waits on transcription or answering -- it just keeps
+  // capturing chunks back-to-back and drops each one in the queue.
   async function recordingLoop(){
-    const CHUNK_MS = 4000;
     while(listening){
       try{
         const blob = await recordChunk(mediaStream, CHUNK_MS);
         if(!listening) break;
+        recordQueue.push(blob);
+        updateQueueReadout();
+        processQueue(); // fire-and-forget: don't block recording on this
+      }catch(e){
+        const msg = e && e.message ? e.message : String(e);
+        addLog(`recording failed: ${msg}`, 'err');
+        flashError();
+        await new Promise(r=>setTimeout(r, 1200));
+      }
+    }
+  }
 
+  // Drains the queue one chunk at a time, on purpose -- faster-whisper is
+  // CPU-bound on your laptop, so transcribing two chunks at once would just
+  // make both of them slower, not faster. Answering (Groq, cloud) is NOT
+  // awaited here, so it runs alongside the next transcription instead of
+  // blocking it.
+  async function processQueue(){
+    if(draining) return;
+    draining = true;
+    while(recordQueue.length){
+      const blob = recordQueue.shift();
+      updateQueueReadout();
+      try{
         els.liveCaption.textContent = 'transcribing…';
 
         const form = new FormData();
@@ -631,36 +738,48 @@
         form.append('lang', currentLang);
 
         const res = await fetch('/transcribe', { method: 'POST', body: form });
-        if(!res.ok) throw new Error('Server responded with ' + res.status);
+        if(!res.ok) throw new Error('server responded with ' + res.status);
         const data = await res.json();
         const text = (data.text || '').trim();
 
-        els.liveCaption.textContent = text ? ('“' + text + '”') : '';
-        if(text){ checkForMatch(text); }
+        chunkCount++;
+        els.chunkCount.textContent = chunkCount;
+
+        els.liveCaption.textContent = text ? ('"' + text + '"') : '';
+        if(text){
+          addLog(`transcribed: "${text}"`);
+          checkForMatch(text); // not awaited -- runs alongside the next transcription
+        }
       }catch(e){
-        showDebug('Couldn\'t reach the transcription server: ' + (e && e.message ? e.message : e) + '. Make sure server.py is running on your laptop and your phone is on the same wifi network.');
+        const msg = e && e.message ? e.message : String(e);
+        showMicWarning("Couldn't reach the transcription server: " + msg + ". Make sure server.py is running and this device can reach it.");
+        addLog(`/transcribe failed: ${msg}`, 'err');
+        flashError();
         await new Promise(r=>setTimeout(r, 1200));
       }
     }
+    draining = false;
   }
 
   async function startListening(){
     if(!hasRecordingSupport) return;
-    showDebug('');
+    showMicWarning('');
 
     try{
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     }catch(permErr){
-      showDebug('Microphone permission was blocked or denied (' + (permErr && permErr.name ? permErr.name : 'unknown error') + ').');
+      const msg = 'Microphone permission was blocked or denied (' + (permErr && permErr.name ? permErr.name : 'unknown error') + ').';
+      showMicWarning(msg);
+      addLog(msg, 'err');
       return;
     }
 
     listening = true;
-    els.ring.classList.add('live');
+    setState('listening', 'listening for the next question');
+    startLevelMeter(mediaStream);
     els.toggleBtn.textContent = 'Stop';
     els.toggleBtn.classList.add('stop');
-    els.listenTitle.textContent = 'Listening';
-    els.listenState.textContent = 'Sending audio to your laptop to transcribe';
+    addLog('listening started · mic access granted');
 
     recordingLoop();
   }
@@ -671,12 +790,12 @@
       mediaStream.getTracks().forEach(t=>t.stop());
       mediaStream = null;
     }
-    els.ring.classList.remove('live');
-    els.listenTitle.textContent = 'Not listening';
-    els.listenState.textContent = "Tap start when you're ready";
+    stopLevelMeter();
+    setState('idle', "tap start when you're ready");
     els.toggleBtn.textContent = 'Start';
     els.toggleBtn.classList.remove('stop');
     els.liveCaption.textContent = '';
+    addLog('listening stopped');
   }
 
   els.toggleBtn.addEventListener('click', ()=>{
@@ -687,11 +806,11 @@
     currentLang = lang;
     els.langEn.classList.toggle('active', lang === 'en-US');
     els.langNl.classList.toggle('active', lang === 'nl-NL');
+    els.ocLang.textContent = lang === 'en-US' ? 'EN' : 'NL';
+    addLog(`language set to ${lang === 'en-US' ? 'English' : 'Nederlands'}`);
   }
   els.langEn.addEventListener('click', ()=> setLang('en-US'));
   els.langNl.addEventListener('click', ()=> setLang('nl-NL'));
-
-  loadTopics();
 })();
 </script>
 </body>
