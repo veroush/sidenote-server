@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .env
 venv/
+whisper-small-nl-ct2/model.bin
