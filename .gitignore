@@ -4,3 +4,4 @@ __pycache__/
 .env
 venv/
 whisper-small-nl-ct2/model.bin
+*.wav
