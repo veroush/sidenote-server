@@ -10,7 +10,9 @@ Produces a .wav file per text sample and prints how long each one took.
 """
 
 import time
+print("Importing kokoro (this can be slow on first run — transformers library building its internal import map)...")
 from kokoro import KPipeline
+print("Import done.")
 import soundfile as sf
 
 # 'a' = American English. This matches Section 88's decision to ship
@@ -27,6 +29,10 @@ VOICE = "af_heart"
 # synthesis time scales roughly linearly with text length on this CPU -
 # the same kind of question asked of faster-whisper/Nemotron before it.
 SAMPLES = {
+    "realistic": (
+        "White can castle kingside as long as the king and rook haven't moved "
+        "and there's no check along the way."
+    ),
     "short": "A pawn can promote to a queen, rook, bishop, or knight when it reaches the far side of the board.",
     "longer": (
         "Castling is a special move that involves the king and one of the rooks. "

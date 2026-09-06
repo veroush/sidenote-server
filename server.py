@@ -20,10 +20,12 @@ import io
 import re
 from pathlib import Path
 from groq_answer import get_concise_answer
+from groq_speak import synthesize_speech
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import Response
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
 
@@ -108,6 +110,7 @@ print(f"Hotwords built from PDF content: {HOTWORDS[:120]}{'...' if len(HOTWORDS)
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...), lang: str = Form("en-US")):
     audio_bytes = await file.read()
+    print(f"DEBUG: received {len(audio_bytes)} bytes of audio")
 
     hotwords = HOTWORDS
 
@@ -121,6 +124,7 @@ async def transcribe(file: UploadFile = File(...), lang: str = Form("en-US")):
     )
 
     text = " ".join(seg.text.strip() for seg in segments).strip()
+    print(f"DEBUG: transcribed text = {text!r}")
     return {"text": text}
 
 
@@ -144,6 +148,20 @@ async def answer(req: AnswerRequest):
         return {"answer": get_concise_answer(req.question, context), "source": "groq"}
     except Exception as e:
         print(f"RAG answer failed: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class SpeakRequest(BaseModel):
+    text: str
+
+
+@app.post("/speak")
+async def speak(req: SpeakRequest):
+    try:
+        audio_bytes = synthesize_speech(req.text)
+        return Response(content=audio_bytes, media_type="audio/wav")
+    except Exception as e:
+        print(f"TTS failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
 # Serves static/index.html (and everything else in static/) at the root.
