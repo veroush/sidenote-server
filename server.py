@@ -16,10 +16,14 @@ Then find your laptop's local IP address:
 And on your phone (same wifi), visit: http://THAT_IP:8000
 """
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import io
 import re
 from pathlib import Path
-from groq_answer import get_concise_answer
+from groq_answer import get_concise_answer, get_list_tool_response
 from groq_speak import synthesize_speech
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -34,10 +38,6 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = FastAPI()
 
@@ -140,6 +140,14 @@ def format_docs(docs) -> str:
 
 @app.post("/answer")
 async def answer(req: AnswerRequest):
+    try:
+        list_answer = get_list_tool_response(req.question)
+        if list_answer is not None:
+            return {"answer": list_answer, "source": "list"}
+    except Exception as e:
+        print(f"List tool check failed: {e}")
+        # fall through to RAG path below
+
     if vectorstore is None:
         raise HTTPException(status_code=503, detail="No documents indexed in data/ -- nothing to answer from.")
     try:
