@@ -8,3 +8,4 @@ whisper-small-nl-ct2/model.bin
 
 PyWhatKit_DB.txt
 lists.db
+memdb/

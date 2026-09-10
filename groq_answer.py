@@ -8,6 +8,7 @@ from list_store import add_item, add_items, get_items, clear_list
 from personality import add_flavor, personality_preamble, language_instruction, list_template
 from langdetect import detect, DetectorFactory
 import whatsapp_send
+import memory_store as mem
 
 # langdetect samples n-grams randomly under the hood, so without a fixed
 # seed the same text can occasionally get classified differently between
@@ -117,6 +118,20 @@ TOOLS = [
             "name": "cancel_whatsapp_message",
             "description": "Discard the currently drafted WhatsApp message without sending it.",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "wipe_memories",
+            "description": "Delete stored memories from a specific day the user mentions, e.g. 'wipe everything from this day 3 months ago' or 'forget what I said 3 maanden geleden'. Pass the date phrase from the user's own words -- do not convert it to a calendar date yourself.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phrase": {"type": "string", "description": "The date phrase as the user said it, e.g. 'this day 3 months ago'"},
+                },
+                "required": ["phrase"],
+            },
         },
     },
 ]
@@ -236,6 +251,16 @@ def get_list_tool_response(question: str):
     confirmation. If it doesn't call a tool, return None so the caller
     falls back to the existing RAG note-answering path."""
 
+    # A pending memory wipe takes priority over anything else -- deleting
+    # data is higher-stakes than a WhatsApp draft, so we resolve this
+    # first, deterministically, before Groq sees the message at all.
+    if mem.has_pending_wipe():
+        normalized = question.strip().lower()
+        if normalized in _CONFIRM_WORDS:
+            return add_flavor(mem.confirm_wipe())
+        if normalized in _CANCEL_WORDS:
+            return add_flavor(mem.cancel_wipe())
+        return add_flavor("I still need a yes or no on that -- confirm the wipe, or cancel it?")
     # If a WhatsApp draft is already pending, a short confirm/cancel reply
     # carries no context Groq can see on its own (each /answer call is a
     # fresh, stateless request) -- so we check locally first, deterministically,
@@ -265,7 +290,11 @@ def get_list_tool_response(question: str):
                 "packing) and draft/send WhatsApp messages. If the user is "
                 "asking to add something to a list, asking what's on a list, "
                 "or asking to clear/wipe/empty a list, call the appropriate "
-                "list tool. If the user asks you to send a WhatsApp message "
+                "list tool. If the user asks to forget, wipe, or delete "
+                "memories from a specific day (e.g. 'wipe everything from "
+                "this day 3 months ago'), call wipe_memories with the date "
+                "phrase exactly as they said it. "
+                "If the user asks you to send a WhatsApp message "
                 "to someone, call draft_whatsapp_message with the message "
                 "text rewritten as the actual message to send -- not the "
                 "user's framing of it. For example, if the user says 'tell "
@@ -320,5 +349,11 @@ def get_list_tool_response(question: str):
             results.append(whatsapp_send.cancel_pending())
         elif tool_call.function.name == "update_whatsapp_message":
             results.append(whatsapp_send.update_pending(args["message"]))
+        elif tool_call.function.name == "wipe_memories":
+            result = mem.stage_wipe(args["phrase"])
+            if result is None:
+                results.append("I couldn't tell which date you meant -- can you say it differently?")
+            else:
+                results.append(result)
 
     return add_flavor(" ".join(results)) if results else None
