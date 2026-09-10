@@ -5,7 +5,26 @@ _client = None
 
 import json
 from list_store import add_item, add_items, get_items, clear_list
+from personality import add_flavor, personality_preamble, language_instruction, list_template
+from langdetect import detect, DetectorFactory
 import whatsapp_send
+
+# langdetect samples n-grams randomly under the hood, so without a fixed
+# seed the same text can occasionally get classified differently between
+# runs. Fixing it makes detection repeatable.
+DetectorFactory.seed = 0
+
+
+def detect_language(text: str) -> str:
+    """Best-effort detection of whether text is Dutch or English. Falls
+    back to English on anything short/ambiguous/undetectable -- langdetect
+    is unreliable on very short phrases, and a wrong guess toward Dutch is
+    more disruptive than defaulting to English."""
+    try:
+        code = detect(text)
+    except Exception:
+        return "en"
+    return "nl" if code == "nl" else "en"
 
 TOOLS = [
     {
@@ -74,8 +93,22 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "send_whatsapp_message",
-            "description": "Send the currently drafted WhatsApp message. Only call this after the user has explicitly confirmed (e.g. said 'send it' or 'yes').",
+            "description": "Send the currently drafted WhatsApp message. Only call this after the user has explicitlyconfirmed (e.g. said 'send it' or 'yes').",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_whatsapp_message",
+            "description": "Replace the currently pending WhatsApp draft's message text with a corrected version. The contact stays the same as the existing draft -- only pass the revised message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "The corrected message text to replace the current draft with"},
+                },
+                "required": ["message"],
+            },
         },
     },
     {
@@ -89,7 +122,8 @@ TOOLS = [
 ]
 
 _CONFIRM_WORDS = {"send it", "yes", "yep", "yeah", "confirm", "go ahead", "do it"}
-_CANCEL_WORDS = {"cancel", "cancel it", "discard", "never mind", "nevermind", "no", "stop"}
+_CANCEL_WORDS = {"cancel", "cancel it", "discard", "never mind", "nevermind", "stop"}
+_BARE_NO_WORDS = {"no"}
 
 def natural_join(items: list[str]) -> str:
     """Join a list of items the way a person would say them out loud:
@@ -121,7 +155,12 @@ def get_concise_answer(question: str, notes: str) -> str:
     match, ask Groq for a short, direct answer. Raises on any failure —
     the caller (server.py) decides what to do (e.g. fall back to the
     local heuristic)."""
-    prompt = f"""Use the following note to answer the question. Be concise —
+    lang = detect_language(question)
+    prompt = f"""{personality_preamble()}
+
+{language_instruction(lang)}
+
+Use the following note to answer the question. Be concise â€”
 answer only what was asked, in one or two sentences. If the note doesn't
 contain the answer, say so briefly.
 
@@ -138,7 +177,58 @@ Answer:"""
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )
-    return response.choices[0].message.content.strip()
+    return add_flavor(response.choices[0].message.content.strip())
+
+def _get_draft_correction(question: str) -> str:
+    """Ask Groq to rewrite the currently pending WhatsApp draft's message
+    based on a correction like 'no, it should say X' or 'make it more
+    formal'. Includes the current draft text as context since each
+    /answer call is otherwise stateless and Groq can't see it on its own."""
+    current_message = whatsapp_send._pending["message"]
+    client = _get_client()
+    lang = detect_language(question)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                personality_preamble() + " " + language_instruction(lang) + " "
+                "The user has a pending WhatsApp draft and is correcting "
+                "it. Rewrite the message text based on their correction, "
+                "applying the same reported-speech-to-direct-message "
+                "rewriting rule as before (strip framing like 'saying', "
+                "'tell him/her', convert third-person phrasing into direct "
+                "message text). Then call update_whatsapp_message with the "
+                "full corrected message text -- not just the changed part. "
+                "For example, if the current draft is 'Pick up the "
+                "groceries tomorrow' and the user says 'no, make it "
+                "Friday instead', call update_whatsapp_message with "
+                "message='Pick up the groceries Friday'. Always call "
+                "update_whatsapp_message -- never respond with plain text."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Current draft: \"{current_message}\"\n\nCorrection: {question}",
+        },
+    ]
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=messages,
+        tools=TOOLS,
+        tool_choice="auto",
+        temperature=0,
+    )
+    msg = response.choices[0].message
+    if not msg.tool_calls:
+        return add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
+
+    results = []
+    for tool_call in msg.tool_calls:
+        if tool_call.function.name == "update_whatsapp_message":
+            args = json.loads(tool_call.function.arguments)
+            results.append(whatsapp_send.update_pending(args["message"]))
+    return add_flavor(" ".join(results)) if results else add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
+
 
 def get_list_tool_response(question: str):
     """Ask Groq whether this question is a list add/read request. If the
@@ -153,17 +243,24 @@ def get_list_tool_response(question: str):
     if whatsapp_send._pending is not None:
         normalized = question.strip().lower()
         if normalized in _CONFIRM_WORDS:
-            return whatsapp_send.send_pending()
+            return add_flavor(whatsapp_send.send_pending())
         if normalized in _CANCEL_WORDS:
-            return whatsapp_send.cancel_pending()
-        # Anything else falls through to the normal Groq path below --
-        # e.g. the user might be drafting a new message instead.
+            return add_flavor(whatsapp_send.cancel_pending())
+        if normalized in _BARE_NO_WORDS:
+            return add_flavor("Okay, what should it say instead?")
+        # Anything else with a draft pending is treated as a probable
+        # correction (e.g. "no, it should say X") -- route to Groq with
+        # the current draft's text included as context, so it can call
+        # update_whatsapp_message with a properly rewritten replacement.
+        return _get_draft_correction(question)
 
     client = _get_client()
+    lang = detect_language(question)
     messages = [
         {
             "role": "system",
             "content": (
+                personality_preamble() + " " + language_instruction(lang) + " "
                 "You help manage simple named lists (like groceries, todo, "
                 "packing) and draft/send WhatsApp messages. If the user is "
                 "asking to add something to a list, asking what's on a list, "
@@ -203,21 +300,25 @@ def get_list_tool_response(question: str):
 
         if tool_call.function.name == "add_item":
             add_items(args["list_name"], args["items"])
-            results.append(f"Added {natural_join(args['items'])} to {args['list_name']}.")
+            results.append(list_template(lang, "added").format(
+                items=natural_join(args["items"]), list_name=args["list_name"]))
         elif tool_call.function.name == "get_items":
             items = get_items(args["list_name"])
             if items:
-                results.append(f"On your {args['list_name']} list: {natural_join(items)}.")
+                results.append(list_template(lang, "items").format(
+                    list_name=args["list_name"], items=natural_join(items)))
             else:
-                results.append(f"Your {args['list_name']} list is empty.")
+                results.append(list_template(lang, "empty").format(list_name=args["list_name"]))
         elif tool_call.function.name == "clear_list":
             clear_list(args["list_name"])
-            results.append(f"Cleared your {args['list_name']} list.")
+            results.append(list_template(lang, "cleared").format(list_name=args["list_name"]))
         elif tool_call.function.name == "draft_whatsapp_message":
             results.append(whatsapp_send.draft_message(args["contact_name"], args["message"]))
         elif tool_call.function.name == "send_whatsapp_message":
             results.append(whatsapp_send.send_pending())
         elif tool_call.function.name == "cancel_whatsapp_message":
             results.append(whatsapp_send.cancel_pending())
+        elif tool_call.function.name == "update_whatsapp_message":
+            results.append(whatsapp_send.update_pending(args["message"]))
 
-    return " ".join(results) if results else None
+    return add_flavor(" ".join(results)) if results else None

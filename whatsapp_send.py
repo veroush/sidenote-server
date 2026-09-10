@@ -78,6 +78,18 @@ def draft_message(contact_name: str, message: str) -> str:
     return f'Drafted for {display_name}: "{message}". Say send it to confirm, or cancel it to discard.'
 
 
+def update_pending(message: str) -> str:
+    """Replace the pending draft's message text with a corrected version,
+    keeping the same contact. Mirrors draft_message's capitalization fix
+    and confirmation-string format."""
+    global _pending
+    if _pending is None:
+        return "There's no pending message to update. Draft one first."
+    message = message[0].upper() + message[1:] if message else message
+    _pending["message"] = message
+    return f'Updated: "{message}". Say send it to confirm, or cancel it to discard.'
+
+
 def cancel_pending() -> str:
     global _pending
     if _pending is None:

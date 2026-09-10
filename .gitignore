@@ -5,3 +5,6 @@ __pycache__/
 venv/
 whisper-small-nl-ct2/model.bin
 *.wav
+
+PyWhatKit_DB.txt
+lists.db
