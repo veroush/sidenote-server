@@ -25,6 +25,7 @@ import re
 from pathlib import Path
 from groq_answer import get_concise_answer, get_list_tool_response
 from groq_speak import synthesize_speech
+from session_state import SessionState
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +50,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+session = SessionState()
 
 # "base" is what's actually been tested for real end-to-end latency this
 # session (~2.5-3s transcribe time). "small" measured far slower and far
@@ -125,7 +127,11 @@ async def transcribe(file: UploadFile = File(...), lang: str = Form("en-US")):
 
     text = " ".join(seg.text.strip() for seg in segments).strip()
     print(f"DEBUG: transcribed text = {text!r}")
-    return {"text": text}
+
+    session_event = session.process(text)
+    print(f"DEBUG: session event = {session_event!r} (active={session.active})")
+
+    return {"text": text, "session": session_event}
 
 
 class AnswerRequest(BaseModel):
@@ -140,6 +146,21 @@ def format_docs(docs) -> str:
 
 @app.post("/answer")
 async def answer(req: AnswerRequest):
+    session_event = session.process(req.question)
+    print(f"DEBUG: session event = {session_event!r} (active={session.active})")
+
+    if session_event == "idle":
+        # Ambient chatter while no session is open -- ignore entirely.
+        return {"answer": None, "source": "session"}
+
+    if session_event == "started":
+        return {"answer": "Yes?", "source": "session"}
+
+    if session_event == "ended":
+        return {"answer": "Okay.", "source": "session"}
+
+    # session_event == "active" from here -- a real session is open,
+    # fall through to normal handling below.
     try:
         list_answer = get_list_tool_response(req.question)
         if list_answer is not None:
