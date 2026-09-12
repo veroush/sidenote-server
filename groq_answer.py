@@ -9,6 +9,7 @@ from personality import add_flavor, personality_preamble, language_instruction, 
 from langdetect import detect, DetectorFactory
 import whatsapp_send
 import memory_store as mem
+from web_search import search_web
 
 # langdetect samples n-grams randomly under the hood, so without a fixed
 # seed the same text can occasionally get classified differently between
@@ -123,6 +124,20 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "search_web",
+            "description": "Search the web for current information -- news, weather, sports scores, recent events, prices, or any fact you're not confident about or that could have changed since you last knew about it. Use a short, focused search query, not the user's full sentence.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "A short web search query, e.g. 'weather Amsterdam today' or 'Lakers score last night'"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "wipe_memories",
             "description": "Delete stored memories from a specific day the user mentions, e.g. 'wipe everything from this day 3 months ago' or 'forget what I said 3 maanden geleden'. Pass the date phrase from the user's own words -- do not convert it to a calendar date yourself.",
             "parameters": {
@@ -166,21 +181,26 @@ def _get_client():
 
 
 def get_concise_answer(question: str, notes: str) -> str:
-    """Given a matched topic's notes and the question that triggered the
-    match, ask Groq for a short, direct answer. Raises on any failure —
-    the caller (server.py) decides what to do (e.g. fall back to the
-    local heuristic)."""
+    """Answer a question, using the given notes as context when relevant.
+    No longer hard-gated on a PDF being loaded -- if the notes are empty
+    or don't cover the question, this falls back to Groq's own general
+    knowledge instead. Raises on any failure -- the caller (server.py)
+    decides what to do (e.g. return an error to the client)."""
     lang = detect_language(question)
     prompt = f"""{personality_preamble()}
 
 {language_instruction(lang)}
 
-Use the following note to answer the question. Be concise â€”
-answer only what was asked, in one or two sentences. If the note doesn't
-contain the answer, say so briefly.
+Answer the question concisely, in one or two sentences, suitable for
+being spoken aloud.
 
-Note:
-{notes}
+If the notes below are relevant to the question, use them as your
+primary source. If they don't cover the question, or there are no notes
+at all, answer from your own general knowledge instead -- don't say the
+notes don't contain an answer, just answer normally.
+
+Notes:
+{notes if notes else "(none)"}
 
 Question: {question}
 
@@ -245,6 +265,42 @@ def _get_draft_correction(question: str) -> str:
     return add_flavor(" ".join(results)) if results else add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
 
 
+def _get_search_answer(question: str, search_query: str) -> str:
+    """Run a web search and ask Groq to turn the raw results into a
+    concise, spoken-friendly answer -- never just reads back snippets/URLs.
+    Falls back to a plain spoken error if the search itself fails (missing
+    key, network issue, rate limit) rather than raising all the way up."""
+    lang = detect_language(question)
+    try:
+        raw_results = search_web(search_query)
+    except Exception as e:
+        print(f"Web search failed: {e}")
+        return add_flavor("I couldn't search the web just now -- want me to try again in a bit?")
+
+    client = _get_client()
+    prompt = f"""{personality_preamble()}
+
+{language_instruction(lang)}
+
+Answer the question concisely, in one or two sentences, suitable for
+being spoken aloud, using the web search results below as your source.
+Don't read out URLs. If the results don't actually answer the question,
+say so briefly rather than guessing.
+
+Web search results for "{search_query}":
+{raw_results}
+
+Question: {question}
+
+Answer:"""
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    return add_flavor(response.choices[0].message.content.strip())
+
+
 def get_list_tool_response(question: str):
     """Ask Groq whether this question is a list add/read request. If the
     model calls one of the list tools, execute it and return a plain-text
@@ -294,6 +350,11 @@ def get_list_tool_response(question: str):
                 "memories from a specific day (e.g. 'wipe everything from "
                 "this day 3 months ago'), call wipe_memories with the date "
                 "phrase exactly as they said it. "
+                "If the user asks something that needs current information "
+                "-- news, weather, sports scores, recent events, prices, or "
+                "any fact you're not confident about or that could have "
+                "changed recently -- call search_web with a short, focused "
+                "search query. "
                 "If the user asks you to send a WhatsApp message "
                 "to someone, call draft_whatsapp_message with the message "
                 "text rewritten as the actual message to send -- not the "
@@ -349,6 +410,12 @@ def get_list_tool_response(question: str):
             results.append(whatsapp_send.cancel_pending())
         elif tool_call.function.name == "update_whatsapp_message":
             results.append(whatsapp_send.update_pending(args["message"]))
+        elif tool_call.function.name == "search_web":
+            # Returns immediately rather than joining into `results` --
+            # this needs its own follow-up Groq call to turn raw search
+            # results into an actual answer, unlike the other tools here
+            # which just return a plain confirmation string.
+            return _get_search_answer(question, args["query"])
         elif tool_call.function.name == "wipe_memories":
             result = mem.stage_wipe(args["phrase"])
             if result is None:
