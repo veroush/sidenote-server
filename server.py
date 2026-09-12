@@ -76,7 +76,10 @@ if _pdf_docs:
     _embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     vectorstore = FAISS.from_documents(doc_chunks, _embeddings)
 else:
-    print("Warning: no PDFs found in data/ â€” retrieval will return nothing.")
+    # No longer a hard failure -- /answer now falls back to general
+    # knowledge when there's nothing indexed. This just means notes-based
+    # context won't be available until a PDF is added to data/.
+    print("No PDFs found in data/ -- answers will rely on general knowledge only (no notes context).")
     doc_chunks = []
     vectorstore = None
 
@@ -170,16 +173,24 @@ async def answer(req: AnswerRequest):
             return {"answer": list_answer, "source": "list"}
     except Exception as e:
         print(f"List tool check failed: {e}")
-        # fall through to RAG path below
+        # fall through to the answer path below
 
-    if vectorstore is None:
-        raise HTTPException(status_code=503, detail="No documents indexed in data/ -- nothing to answer from.")
+    # Retrieval is now best-effort, not a hard requirement. If there's no
+    # vectorstore (no PDFs in data/) or retrieval fails, we just answer
+    # with no notes context instead of 503-ing -- get_concise_answer falls
+    # back to general knowledge in that case.
+    context = ""
+    if vectorstore is not None:
+        try:
+            retrieved = vectorstore.similarity_search(req.question, k=5)
+            context = format_docs(retrieved)
+        except Exception as e:
+            print(f"Retrieval failed, answering without notes context: {e}")
+
     try:
-        retrieved = vectorstore.similarity_search(req.question, k=5)
-        context = format_docs(retrieved)
         return {"answer": get_concise_answer(req.question, context), "source": "groq"}
     except Exception as e:
-        print(f"RAG answer failed: {e}")
+        print(f"Answer generation failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
 @app.get("/session/status")
