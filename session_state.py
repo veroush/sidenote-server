@@ -3,7 +3,7 @@ Session-boundary detection for Sidenote's conversational-loop pivot.
 
 Wired into /answer in server.py. A session opens when the wake word
 ("severus") is heard, stays open across follow-up questions, and closes
-on the close phrase ("abort") or after SILENCE_TIMEOUT_SECONDS of
+on the close phrase ("close severus") or after SILENCE_TIMEOUT_SECONDS of
 inactivity. Confirmed working end-to-end through the dictate Android app
 over real speech (wake word, active Q&A, close phrase, and return to
 idle all verified).
@@ -14,7 +14,7 @@ import time
 from difflib import SequenceMatcher
 
 WAKE_WORD = "severus"
-CLOSE_PHRASE = "abort"
+CLOSE_PHRASE = "close severus"
 SILENCE_TIMEOUT_SECONDS = 60
 
 # How close a word has to be to count as a match. 1.0 = exact match only.
@@ -35,10 +35,16 @@ def _best_match_ratio(word: str, target: str) -> float:
 
 
 def contains_fuzzy(text: str, target: str, threshold: float = FUZZY_THRESHOLD) -> bool:
-    """True if any single word in `text` is close enough to `target`."""
-    target = target.lower()
-    for word in _tokenize(text):
-        if _best_match_ratio(word, target) >= threshold:
+    """True if `text` contains a run of consecutive words closely matching
+    `target` (which may itself be one or more words)."""
+    target_words = _tokenize(target)
+    text_words = _tokenize(text)
+    n = len(target_words)
+    target_str = " ".join(target_words)
+
+    for i in range(len(text_words) - n + 1):
+        window = " ".join(text_words[i:i + n])
+        if _best_match_ratio(window, target_str) >= threshold:
             return True
     return False
 
@@ -60,12 +66,25 @@ class SessionState:
             return False
         return (now - self.last_activity) > SILENCE_TIMEOUT_SECONDS
 
+    def check_expired(self, now: float | None = None) -> bool:
+        """Peek at whether the session has timed out, WITHOUT counting this
+        call itself as activity. Used by a periodic heartbeat ping so idle
+        checks don't reset the timer they're trying to detect."""
+        if now is None:
+            now = time.time()
+        if self._timed_out(now):
+            self.active = False
+            self.last_activity = None
+            return True
+        return False
+
     def process(self, text: str, now: float | None = None) -> str:
         """Feed in a chunk of transcribed text. Returns one of:
-        "started"   -- wake word detected, session just opened
-        "ended"     -- close phrase detected, or silence timeout hit
-        "active"    -- session continues, this chunk is part of it
-        "idle"      -- no session, nothing relevant said
+        "started"    -- wake word detected, session just opened
+        "ended"      -- close phrase detected
+        "timed_out"  -- silence timeout hit (session closed itself)
+        "active"     -- session continues, this chunk is part of it
+        "idle"       -- no session, nothing relevant said
         """
         if now is None:
             now = time.time()
@@ -75,7 +94,7 @@ class SessionState:
         if self._timed_out(now):
             self.active = False
             self.last_activity = None
-            return "ended"
+            return "timed_out"
 
         if not self.active:
             if contains_fuzzy(text, WAKE_WORD):

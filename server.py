@@ -156,6 +156,9 @@ async def answer(req: AnswerRequest):
     if session_event == "started":
         return {"answer": "Yes?", "source": "session"}
 
+    if session_event == "timed_out":
+        return {"answer": "Aborting.", "source": "session"}
+
     if session_event == "ended":
         return {"answer": "Okay.", "source": "session"}
 
@@ -179,6 +182,10 @@ async def answer(req: AnswerRequest):
         print(f"RAG answer failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
+@app.get("/session/status")
+async def session_status():
+    timed_out = session.check_expired()
+    return {"active": session.active, "timed_out": timed_out}
 
 class SpeakRequest(BaseModel):
     text: str
