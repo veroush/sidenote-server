@@ -255,17 +255,18 @@ def _get_draft_correction(question: str) -> str:
     )
     msg = response.choices[0].message
     if not msg.tool_calls:
-        return add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
+        return add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?"), "whatsapp"
 
     results = []
     for tool_call in msg.tool_calls:
         if tool_call.function.name == "update_whatsapp_message":
             args = json.loads(tool_call.function.arguments)
             results.append(whatsapp_send.update_pending(args["message"]))
-    return add_flavor(" ".join(results)) if results else add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
+    answer = add_flavor(" ".join(results)) if results else add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
+    return answer, "whatsapp"
 
 
-def _get_search_answer(question: str, search_query: str) -> str:
+def _get_search_answer(question: str, search_query: str) -> tuple[str, str]:
     """Run a web search and ask Groq to turn the raw results into a
     concise, spoken-friendly answer -- never just reads back snippets/URLs.
     Falls back to a plain spoken error if the search itself fails (missing
@@ -275,7 +276,7 @@ def _get_search_answer(question: str, search_query: str) -> str:
         raw_results = search_web(search_query)
     except Exception as e:
         print(f"Web search failed: {e}")
-        return add_flavor("I couldn't search the web just now -- want me to try again in a bit?")
+        return add_flavor("I couldn't search the web just now -- want me to try again in a bit?"), "search"
 
     client = _get_client()
     prompt = f"""{personality_preamble()}
@@ -298,14 +299,13 @@ Answer:"""
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )
-    return add_flavor(response.choices[0].message.content.strip())
-
+    return add_flavor(response.choices[0].message.content.strip()), "search"
 
 def get_list_tool_response(question: str):
-    """Ask Groq whether this question is a list add/read request. If the
-    model calls one of the list tools, execute it and return a plain-text
-    confirmation. If it doesn't call a tool, return None so the caller
-    falls back to the existing RAG note-answering path."""
+    """Ask Groq whether this question is a list/WhatsApp/search/memory
+    request. If the model calls one of the tools, execute it and return
+    (answer, source). If it doesn't call a tool, return None so the
+    caller falls back to the existing RAG note-answering path."""
 
     # A pending memory wipe takes priority over anything else -- deleting
     # data is higher-stakes than a WhatsApp draft, so we resolve this
@@ -313,10 +313,11 @@ def get_list_tool_response(question: str):
     if mem.has_pending_wipe():
         normalized = question.strip().lower()
         if normalized in _CONFIRM_WORDS:
-            return add_flavor(mem.confirm_wipe())
+            return add_flavor(mem.confirm_wipe()), "memory"
         if normalized in _CANCEL_WORDS:
-            return add_flavor(mem.cancel_wipe())
-        return add_flavor("I still need a yes or no on that -- confirm the wipe, or cancel it?")
+            return add_flavor(mem.cancel_wipe()), "memory"
+        return add_flavor("I still need a yes or no on that -- confirm the wipe, or cancel it?"), "memory"
+
     # If a WhatsApp draft is already pending, a short confirm/cancel reply
     # carries no context Groq can see on its own (each /answer call is a
     # fresh, stateless request) -- so we check locally first, deterministically,
@@ -324,11 +325,11 @@ def get_list_tool_response(question: str):
     if whatsapp_send._pending is not None:
         normalized = question.strip().lower()
         if normalized in _CONFIRM_WORDS:
-            return add_flavor(whatsapp_send.send_pending())
+            return add_flavor(whatsapp_send.send_pending()), "whatsapp"
         if normalized in _CANCEL_WORDS:
-            return add_flavor(whatsapp_send.cancel_pending())
+            return add_flavor(whatsapp_send.cancel_pending()), "whatsapp"
         if normalized in _BARE_NO_WORDS:
-            return add_flavor("Okay, what should it say instead?")
+            return add_flavor("Okay, what should it say instead?"), "whatsapp"
         # Anything else with a draft pending is treated as a probable
         # correction (e.g. "no, it should say X") -- route to Groq with
         # the current draft's text included as context, so it can call
@@ -350,11 +351,16 @@ def get_list_tool_response(question: str):
                 "memories from a specific day (e.g. 'wipe everything from "
                 "this day 3 months ago'), call wipe_memories with the date "
                 "phrase exactly as they said it. "
-                "If the user asks something that needs current information "
-                "-- news, weather, sports scores, recent events, prices, or "
-                "any fact you're not confident about or that could have "
-                "changed recently -- call search_web with a short, focused "
-                "search query. "
+                "If the user asks something that needs current information -- "
+                "news, weather, sports scores, recent events, prices, or any "
+                "fact you're not confident about or that could have changed "
+                "recently -- call search_web with a short, focused search "
+                "query. This includes casual phrasings like 'can you Google "
+                "it', 'look that up', 'check online', or 'search for that' -- "
+                "treat these exactly like a direct request for current "
+                "information and call search_web. When in doubt about whether "
+                "something might be outdated, prefer calling search_web over "
+                "answering from memory. "
                 "If the user asks you to send a WhatsApp message "
                 "to someone, call draft_whatsapp_message with the message "
                 "text rewritten as the actual message to send -- not the "
@@ -385,6 +391,7 @@ def get_list_tool_response(question: str):
         return None
 
     results = []
+    source = "list"
     for tool_call in msg.tool_calls:
         args = json.loads(tool_call.function.arguments)
 
@@ -404,12 +411,16 @@ def get_list_tool_response(question: str):
             results.append(list_template(lang, "cleared").format(list_name=args["list_name"]))
         elif tool_call.function.name == "draft_whatsapp_message":
             results.append(whatsapp_send.draft_message(args["contact_name"], args["message"]))
+            source = "whatsapp"
         elif tool_call.function.name == "send_whatsapp_message":
             results.append(whatsapp_send.send_pending())
+            source = "whatsapp"
         elif tool_call.function.name == "cancel_whatsapp_message":
             results.append(whatsapp_send.cancel_pending())
+            source = "whatsapp"
         elif tool_call.function.name == "update_whatsapp_message":
             results.append(whatsapp_send.update_pending(args["message"]))
+            source = "whatsapp"
         elif tool_call.function.name == "search_web":
             # Returns immediately rather than joining into `results` --
             # this needs its own follow-up Groq call to turn raw search
@@ -422,5 +433,8 @@ def get_list_tool_response(question: str):
                 results.append("I couldn't tell which date you meant -- can you say it differently?")
             else:
                 results.append(result)
+            source = "memory"
 
-    return add_flavor(" ".join(results)) if results else None
+    if not results:
+        return None
+    return add_flavor(" ".join(results)), source

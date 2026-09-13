@@ -149,28 +149,17 @@ def format_docs(docs) -> str:
 
 @app.post("/answer")
 async def answer(req: AnswerRequest):
-    session_event = session.process(req.question)
-    print(f"DEBUG: session event = {session_event!r} (active={session.active})")
-
-    if session_event == "idle":
-        # Ambient chatter while no session is open -- ignore entirely.
-        return {"answer": None, "source": "session"}
-
-    if session_event == "started":
-        return {"answer": "Yes?", "source": "session"}
-
-    if session_event == "timed_out":
-        return {"answer": "Aborting.", "source": "session"}
-
-    if session_event == "ended":
-        return {"answer": "Okay.", "source": "session"}
-
-    # session_event == "active" from here -- a real session is open,
-    # fall through to normal handling below.
+    # Session gating (wake word "severus" / close phrase / timeout) used to
+    # live here, but is now redundant and actively harmful: on-device
+    # wake-word detection ("Hey Jarvis") in the dictate app already gates
+    # the mic before a request is ever sent, so every question reaching
+    # this endpoint is already a real, intended command. Retired per the
+    # architecture-conflict note in session_state.py's own docstring.
     try:
-        list_answer = get_list_tool_response(req.question)
-        if list_answer is not None:
-            return {"answer": list_answer, "source": "list"}
+        list_result = get_list_tool_response(req.question)
+        if list_result is not None:
+            answer, source = list_result
+            return {"answer": answer, "source": source}
     except Exception as e:
         print(f"List tool check failed: {e}")
         # fall through to the answer path below
