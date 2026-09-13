@@ -10,6 +10,7 @@ from langdetect import detect, DetectorFactory
 import whatsapp_send
 import memory_store as mem
 from web_search import search_web
+import conversation_state as convo
 
 # langdetect samples n-grams randomly under the hood, so without a fixed
 # seed the same text can occasionally get classified differently between
@@ -207,14 +208,21 @@ Question: {question}
 Answer:"""
 
     client = _get_client()
+    history_messages = []
+    for turn in convo.get_history():
+        history_messages.append({"role": "user", "content": turn["question"]})
+        history_messages.append({"role": "assistant", "content": turn["answer"]})
+
     response = client.chat.completions.create(
         model="openai/gpt-oss-20b",
-        messages=[{"role": "user", "content": prompt}],
+        messages=history_messages + [{"role": "user", "content": prompt}],
         temperature=0,
     )
-    return add_flavor(response.choices[0].message.content.strip())
+    answer = add_flavor(response.choices[0].message.content.strip())
+    convo.add_turn(question, answer)
+    return answer
 
-def _get_draft_correction(question: str) -> str:
+def _get_draft_correction(question: str) -> tuple[str, str]:
     """Ask Groq to rewrite the currently pending WhatsApp draft's message
     based on a correction like 'no, it should say X' or 'make it more
     formal'. Includes the current draft text as context since each
