@@ -158,8 +158,11 @@ async def answer(req: AnswerRequest):
     try:
         list_result = get_list_tool_response(req.question)
         if list_result is not None:
-            answer, source = list_result
-            return {"answer": answer, "source": source}
+            answer, source, *extra = list_result
+            response = {"answer": answer, "source": source}
+            if extra:
+                response.update(extra[0])
+            return response
     except Exception as e:
         print(f"List tool check failed: {e}")
         # fall through to the answer path below

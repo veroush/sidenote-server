@@ -11,6 +11,7 @@ import whatsapp_send
 import memory_store as mem
 from web_search import search_web
 import conversation_state as convo
+import reminders
 
 # langdetect samples n-grams randomly under the hood, so without a fixed
 # seed the same text can occasionally get classified differently between
@@ -147,6 +148,23 @@ TOOLS = [
                     "phrase": {"type": "string", "description": "The date phrase as the user said it, e.g. 'this day 3 months ago'"},
                 },
                 "required": ["phrase"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_reminder",
+            "description": "Set a reminder for the user, either after a delay ('in 5 minutes') or at a clock time ('at 8pm'). Never work out calendar dates yourself.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Short action phrase without 'remind me to', e.g. 'call Ben'"},
+                    "delay_minutes": {"type": "number", "description": "Minutes from now, for relative times like 'in 5 minutes' or 'in an hour' (60)"},
+                    "time_24h": {"type": "string", "description": "Clock time as HH:MM in 24-hour format, e.g. '20:00' for 8pm"},
+                    "days_ahead": {"type": "integer", "description": "0 for today, 1 for tomorrow, and so on. Only set it if the user names a day."},
+                },
+                "required": ["task"],
             },
         },
     },
@@ -396,6 +414,15 @@ def get_list_tool_response(question: str):
                 "information and call search_web. When in doubt about whether "
                 "something might be outdated, prefer calling search_web over "
                 "answering from memory. "
+                "If the user asks to be reminded of something, at a time or "
+                "after a delay (e.g. 'remind me to call Ben at 8pm', 'remind "
+                "me in 5 minutes to check the oven'), call set_reminder. Pass "
+                "task as a short action phrase without 'remind me to', in the "
+                "user's own words and language -- never translate it (Dutch "
+                "stays Dutch). Use "
+                "delay_minutes for relative times, or time_24h for clock times "
+                "(8pm -> '20:00'). If no time was given, call set_reminder "
+                "with only the task. "
                 "If the user asks you to send a WhatsApp message "
                 "to someone, call draft_whatsapp_message with the message "
                 "text rewritten as the actual message to send -- not the "
@@ -431,6 +458,7 @@ def get_list_tool_response(question: str):
     results = []
     source = "list"
     whatsapp_sent = False
+    reminder_payload = None
     for tool_call in msg.tool_calls:
         args = json.loads(tool_call.function.arguments)
 
@@ -484,6 +512,25 @@ def get_list_tool_response(question: str):
             else:
                 results.append(result)
             source = "memory"
+        elif tool_call.function.name == "set_reminder":
+            task = str(args.get("task", "")).strip()
+            try:
+                delay = reminders.resolve_delay_seconds(
+                    delay_minutes=args.get("delay_minutes"),
+                    time_24h=args.get("time_24h"),
+                    days_ahead=args.get("days_ahead"),
+                )
+            except Exception:
+                delay = None
+            source = "reminder"
+            if delay is None or not task:
+                results.append(reminders.ask_when(lang))
+            else:
+                results.append(reminders.confirmation(lang, task, delay))
+                reminder_payload = {
+                    "delay_seconds": delay,
+                    "text": reminders.spoken_text(lang, task),
+                }
 
     if not results:
         return None
@@ -492,13 +539,15 @@ def get_list_tool_response(question: str):
     # added, list cleared, WhatsApp sent) -- never on lookups, drafts,
     # staged wipes, or clarifying questions.
     completed = any(tc.function.name in ("add_item", "clear_list") for tc in msg.tool_calls)
-    if completed or whatsapp_sent:
+    if completed or whatsapp_sent or reminder_payload is not None:
         answer = add_flavor(answer)
     # Record list/memory outcomes so follow-ups like "add bread too" have
     # something to resolve against. WhatsApp is handled separately above
     # (only on a completed send, via a synthetic turn) since its
     # draft/correct/confirm loop is already resolved locally without
     # needing conversation_state.
-    if source in ("list", "memory"):
+    if source in ("list", "memory", "reminder"):
         convo.add_turn(question, answer)
+    if reminder_payload is not None:
+        return answer, source, {"reminder": reminder_payload}
     return answer, source
