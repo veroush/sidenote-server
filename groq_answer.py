@@ -226,7 +226,12 @@ def _get_draft_correction(question: str) -> tuple[str, str]:
     """Ask Groq to rewrite the currently pending WhatsApp draft's message
     based on a correction like 'no, it should say X' or 'make it more
     formal'. Includes the current draft text as context since each
-    /answer call is otherwise stateless and Groq can't see it on its own."""
+    /answer call is otherwise stateless and Groq can't see it on its own.
+
+    Deliberately does NOT record anything into conversation_state -- this
+    is an intermediate step in a still-pending draft, not a completed
+    action. Only a successful send gets recorded (see send_pending's
+    call sites in get_list_tool_response)."""
     current_message = whatsapp_send._pending["message"]
     client = _get_client()
     lang = detect_language(question)
@@ -307,7 +312,11 @@ Answer:"""
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )
-    return add_flavor(response.choices[0].message.content.strip()), "search"
+    answer = add_flavor(response.choices[0].message.content.strip())
+    # Recorded so a follow-up like "what about tomorrow" right after a
+    # weather/news search has something to resolve against.
+    convo.add_turn(question, answer)
+    return answer, "search"
 
 def get_list_tool_response(question: str):
     """Ask Groq whether this question is a list/WhatsApp/search/memory
@@ -333,7 +342,18 @@ def get_list_tool_response(question: str):
     if whatsapp_send._pending is not None:
         normalized = question.strip().lower()
         if normalized in _CONFIRM_WORDS:
-            return add_flavor(whatsapp_send.send_pending()), "whatsapp"
+            # Capture the draft before send_pending() clears it -- we need
+            # its contact/message to build a useful synthetic turn, and
+            # only record on an actual successful send (see docstring note
+            # in _get_draft_correction for why intermediate steps aren't
+            # recorded).
+            draft_before = whatsapp_send._pending
+            result = whatsapp_send.send_pending()
+            answer = add_flavor(result)
+            if draft_before is not None and result.startswith("Sent to"):
+                synthetic_q = f"send a WhatsApp message to {draft_before['contact_name']}: {draft_before['message']}"
+                convo.add_turn(synthetic_q, answer)
+            return answer, "whatsapp"
         if normalized in _CANCEL_WORDS:
             return add_flavor(whatsapp_send.cancel_pending()), "whatsapp"
         if normalized in _BARE_NO_WORDS:
@@ -346,6 +366,10 @@ def get_list_tool_response(question: str):
 
     client = _get_client()
     lang = detect_language(question)
+    history_messages = []
+    for turn in convo.get_history():
+        history_messages.append({"role": "user", "content": turn["question"]})
+        history_messages.append({"role": "assistant", "content": turn["answer"]})
     messages = [
         {
             "role": "system",
@@ -389,7 +413,7 @@ def get_list_tool_response(question: str):
     ]
     response = client.chat.completions.create(
         model="openai/gpt-oss-20b",
-        messages=messages,
+        messages=history_messages + messages,
         tools=TOOLS,
         tool_choice="auto",
         temperature=0,
@@ -421,8 +445,16 @@ def get_list_tool_response(question: str):
             results.append(whatsapp_send.draft_message(args["contact_name"], args["message"]))
             source = "whatsapp"
         elif tool_call.function.name == "send_whatsapp_message":
-            results.append(whatsapp_send.send_pending())
+            # Same capture-before-clear approach as the confirm-shortcut
+            # path above -- only record a synthetic turn if this actually
+            # succeeded.
+            draft_before = whatsapp_send._pending
+            result = whatsapp_send.send_pending()
+            results.append(result)
             source = "whatsapp"
+            if draft_before is not None and result.startswith("Sent to"):
+                synthetic_q = f"send a WhatsApp message to {draft_before['contact_name']}: {draft_before['message']}"
+                convo.add_turn(synthetic_q, add_flavor(result))
         elif tool_call.function.name == "cancel_whatsapp_message":
             results.append(whatsapp_send.cancel_pending())
             source = "whatsapp"
@@ -433,7 +465,9 @@ def get_list_tool_response(question: str):
             # Returns immediately rather than joining into `results` --
             # this needs its own follow-up Groq call to turn raw search
             # results into an actual answer, unlike the other tools here
-            # which just return a plain confirmation string.
+            # which just return a plain confirmation string. (Recording
+            # into conversation_state happens inside _get_search_answer
+            # itself.)
             return _get_search_answer(question, args["query"])
         elif tool_call.function.name == "wipe_memories":
             result = mem.stage_wipe(args["phrase"])
@@ -445,4 +479,12 @@ def get_list_tool_response(question: str):
 
     if not results:
         return None
-    return add_flavor(" ".join(results)), source
+    answer = add_flavor(" ".join(results))
+    # Record list/memory outcomes so follow-ups like "add bread too" have
+    # something to resolve against. WhatsApp is handled separately above
+    # (only on a completed send, via a synthetic turn) since its
+    # draft/correct/confirm loop is already resolved locally without
+    # needing conversation_state.
+    if source in ("list", "memory"):
+        convo.add_turn(question, answer)
+    return answer, source
