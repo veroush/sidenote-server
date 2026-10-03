@@ -195,6 +195,9 @@ def get_concise_answer(question: str, notes: str) -> str:
 Answer the question concisely, in one or two sentences, suitable for
 being spoken aloud.
 
+If the user asks for a joke, tell one short, genuinely funny joke and
+nothing else -- no commentary before or after it.
+
 If the notes below are relevant to the question, use them as your
 primary source. If they don't cover the question, or there are no notes
 at all, answer from your own general knowledge instead -- don't say the
@@ -218,7 +221,7 @@ Answer:"""
         messages=history_messages + [{"role": "user", "content": prompt}],
         temperature=0,
     )
-    answer = add_flavor(response.choices[0].message.content.strip())
+    answer = response.choices[0].message.content.strip()
     convo.add_turn(question, answer)
     return answer
 
@@ -268,14 +271,14 @@ def _get_draft_correction(question: str) -> tuple[str, str]:
     )
     msg = response.choices[0].message
     if not msg.tool_calls:
-        return add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?"), "whatsapp"
+        return "Sorry, I didn't catch what to change it to -- what should it say instead?", "whatsapp"
 
     results = []
     for tool_call in msg.tool_calls:
         if tool_call.function.name == "update_whatsapp_message":
             args = json.loads(tool_call.function.arguments)
             results.append(whatsapp_send.update_pending(args["message"]))
-    answer = add_flavor(" ".join(results)) if results else add_flavor("Sorry, I didn't catch what to change it to -- what should it say instead?")
+    answer = " ".join(results) if results else "Sorry, I didn't catch what to change it to -- what should it say instead?"
     return answer, "whatsapp"
 
 
@@ -289,7 +292,7 @@ def _get_search_answer(question: str, search_query: str) -> tuple[str, str]:
         raw_results = search_web(search_query)
     except Exception as e:
         print(f"Web search failed: {e}")
-        return add_flavor("I couldn't search the web just now -- want me to try again in a bit?"), "search"
+        return "I couldn't search the web just now -- want me to try again in a bit?", "search"
 
     client = _get_client()
     prompt = f"""{personality_preamble()}
@@ -312,7 +315,7 @@ Answer:"""
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )
-    answer = add_flavor(response.choices[0].message.content.strip())
+    answer = response.choices[0].message.content.strip()
     # Recorded so a follow-up like "what about tomorrow" right after a
     # weather/news search has something to resolve against.
     convo.add_turn(question, answer)
@@ -332,8 +335,8 @@ def get_list_tool_response(question: str):
         if normalized in _CONFIRM_WORDS:
             return add_flavor(mem.confirm_wipe()), "memory"
         if normalized in _CANCEL_WORDS:
-            return add_flavor(mem.cancel_wipe()), "memory"
-        return add_flavor("I still need a yes or no on that -- confirm the wipe, or cancel it?"), "memory"
+            return mem.cancel_wipe(), "memory"
+        return "I still need a yes or no on that -- confirm the wipe, or cancel it?", "memory"
 
     # If a WhatsApp draft is already pending, a short confirm/cancel reply
     # carries no context Groq can see on its own (each /answer call is a
@@ -349,15 +352,15 @@ def get_list_tool_response(question: str):
             # recorded).
             draft_before = whatsapp_send._pending
             result = whatsapp_send.send_pending()
-            answer = add_flavor(result)
+            answer = add_flavor(result) if result.startswith("Sent to") else result
             if draft_before is not None and result.startswith("Sent to"):
                 synthetic_q = f"send a WhatsApp message to {draft_before['contact_name']}: {draft_before['message']}"
                 convo.add_turn(synthetic_q, answer)
             return answer, "whatsapp"
         if normalized in _CANCEL_WORDS:
-            return add_flavor(whatsapp_send.cancel_pending()), "whatsapp"
+            return whatsapp_send.cancel_pending(), "whatsapp"
         if normalized in _BARE_NO_WORDS:
-            return add_flavor("Okay, what should it say instead?"), "whatsapp"
+            return "Okay, what should it say instead?", "whatsapp"
         # Anything else with a draft pending is treated as a probable
         # correction (e.g. "no, it should say X") -- route to Groq with
         # the current draft's text included as context, so it can call
@@ -406,7 +409,10 @@ def get_list_tool_response(question: str):
                 "if the user's message is an explicit confirmation of an "
                 "already-drafted message (e.g. 'send it', 'yes', 'go ahead'). "
                 "If the user wants to discard a draft, call "
-                "cancel_whatsapp_message. Otherwise, do not call any tool."
+                "cancel_whatsapp_message. Requests for jokes, trivia, "
+                "definitions, explanations, or general conversation are "
+                "NOT tool requests -- never call a tool for them. "
+                "Otherwise, do not call any tool."
             ),
         },
         {"role": "user", "content": question},
@@ -424,6 +430,7 @@ def get_list_tool_response(question: str):
 
     results = []
     source = "list"
+    whatsapp_sent = False
     for tool_call in msg.tool_calls:
         args = json.loads(tool_call.function.arguments)
 
@@ -452,6 +459,7 @@ def get_list_tool_response(question: str):
             result = whatsapp_send.send_pending()
             results.append(result)
             source = "whatsapp"
+            whatsapp_sent = result.startswith("Sent to")
             if draft_before is not None and result.startswith("Sent to"):
                 synthetic_q = f"send a WhatsApp message to {draft_before['contact_name']}: {draft_before['message']}"
                 convo.add_turn(synthetic_q, add_flavor(result))
@@ -479,7 +487,13 @@ def get_list_tool_response(question: str):
 
     if not results:
         return None
-    answer = add_flavor(" ".join(results))
+    answer = " ".join(results)
+    # Witty aside only after something was actually completed (items
+    # added, list cleared, WhatsApp sent) -- never on lookups, drafts,
+    # staged wipes, or clarifying questions.
+    completed = any(tc.function.name in ("add_item", "clear_list") for tc in msg.tool_calls)
+    if completed or whatsapp_sent:
+        answer = add_flavor(answer)
     # Record list/memory outcomes so follow-ups like "add bread too" have
     # something to resolve against. WhatsApp is handled separately above
     # (only on a completed send, via a synthetic turn) since its

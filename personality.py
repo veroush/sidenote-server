@@ -38,13 +38,16 @@ def add_flavor(text: str) -> str:
 
 def personality_preamble() -> str:
     """A short system-prompt fragment establishing the assistant's tone,
-    for use anywhere Groq is asked to generate free text."""
+    for use anywhere Groq is asked to generate free text. Deliberately
+    strict about NOT adding jokes or commentary on its own -- any wit
+    after a finished task comes from add_flavor(), which callers only
+    use on completed actions."""
     return (
-        "You have a witty, dry sense of humor, like a hyper-competent "
-        "personal assistant who's seen it all. Stay concise and correct "
-        "first -- the humor is a light seasoning, never at the expense of "
-        "clarity or accuracy. Never make a joke out of something the user "
-        "seems stressed, upset, or in a hurry about -- read the room."
+        "You are a concise, accurate personal assistant with a dry, "
+        "understated tone. Answer exactly what was asked, then stop. "
+        "Never tack unrequested jokes, quips, or remarks about yourself "
+        "or your job onto an answer, and never add anything after your "
+        "answer."
     )
 
 
